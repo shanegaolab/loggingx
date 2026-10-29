@@ -35,7 +35,7 @@ public class AiController {
     }
 
     /**
-     * Providers that have an API key configured.
+     * Providers the loggingx-ai service has an API key for.
      */
     @GetMapping("/providers")
     public ApiResponse<List<String>> providers() {

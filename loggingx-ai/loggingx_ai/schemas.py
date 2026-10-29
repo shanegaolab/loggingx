@@ -46,6 +46,28 @@ class AgentStep(CamelModel):
     duration_ms: int = 0
 
 
+class ChatTurn(CamelModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=50_000)
+
+
+class ChatRequest(CamelModel):
+    message: str = Field(min_length=1, max_length=100_000)
+    system_prompt: str | None = Field(default=None, max_length=50_000)
+    # Pins a provider (deepseek or qwen) and optionally its model; otherwise LOGGINGX_AI_CHAT_MODEL with fallback.
+    provider: str | None = Field(default=None, max_length=32)
+    model: str | None = Field(default=None, max_length=128)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=20)
+
+
+class ChatReply(CamelModel):
+    provider: str
+    model: str
+    content: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
 class DiagnoseResponse(CamelModel):
     """Fields match loggingx-java's ai_diagnosis columns so the result can be stored as is."""
 

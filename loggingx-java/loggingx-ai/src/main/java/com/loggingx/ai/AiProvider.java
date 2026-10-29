@@ -5,12 +5,11 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Chat model providers; {@link #id()} is the name used in requests and in the {@code spring.ai.<id>} properties.
+ * Chat model providers of the loggingx-ai service; {@link #id()} is the name used in requests and settings.
  */
 public enum AiProvider {
-    OPENAI("openai"),
-    ANTHROPIC("anthropic"),
-    DEEPSEEK("deepseek");
+    DEEPSEEK("deepseek"),
+    QWEN("qwen");
 
     private final String id;
 

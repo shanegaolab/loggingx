@@ -5,50 +5,10 @@ spring:
   # (see .env.example). Real environment variables take precedence.
   config:
     import: optional:file:.env[.properties]
-  # Spring AI's chat auto-configurations register every provider even without an API key;
-  # AiConfiguration (loggingx-ai) imports them only for the providers whose key is set.
-  autoconfigure:
-    exclude:
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
-      - org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration
-      - org.springframework.ai.model.deepseek.autoconfigure.DeepSeekChatAutoConfiguration
   mvc:
     async:
       # Bounds streamed responses (/api/ai/chat/stream); long model answers outlast the container's 30 s default.
       request-timeout: 5m
-  ai:
-    # Only chat is used: turn off the OpenAI starter's other models, and the ChatClient.Builder bean,
-    # which needs exactly one ChatModel (AiChatService builds one ChatClient per provider instead).
-    model:
-      embedding: none
-      image: none
-      moderation: none
-      audio:
-        speech: none
-        transcription: none
-    chat:
-      client:
-        enabled: false
-    # A provider is enabled when its API key is set. Base URLs are set explicitly so the SDKs do not pick up
-    # OPENAI_BASE_URL / ANTHROPIC_BASE_URL from the environment; point them at a compatible gateway if needed.
-    openai:
-      api-key: ${LOGGINGX_AI_OPENAI_API_KEY:}
-      base-url: ${LOGGINGX_AI_OPENAI_BASE_URL:https://api.openai.com/v1}
-      chat:
-        options:
-          model: ${LOGGINGX_AI_OPENAI_MODEL:gpt-5-mini}
-    anthropic:
-      api-key: ${LOGGINGX_AI_ANTHROPIC_API_KEY:}
-      base-url: ${LOGGINGX_AI_ANTHROPIC_BASE_URL:https://api.anthropic.com}
-      chat:
-        options:
-          model: ${LOGGINGX_AI_ANTHROPIC_MODEL:claude-haiku-4-5}
-    deepseek:
-      api-key: ${LOGGINGX_AI_DEEPSEEK_API_KEY:}
-      base-url: ${LOGGINGX_AI_DEEPSEEK_BASE_URL:https://api.deepseek.com}
-      chat:
-        options:
-          model: ${LOGGINGX_AI_DEEPSEEK_MODEL:deepseek-flash}
   datasource:
     # The driver caches prepared statements per connection, which pays off with a pool.
     url: ${LOGGINGX_DATASOURCE_URL:jdbc:mysql://localhost:3306/loggingx?characterEncoding=UTF-8&useServerPrepStmts=true&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048}
@@ -128,14 +88,14 @@ loggingx:
       # Comma-separated.
       topics: ${LOGGINGX_KAFKA_TOPICS:loggingx-logs}
       group-id: ${LOGGINGX_KAFKA_GROUP_ID:loggingx}
+  # Every AI feature (chat, the assistant, diagnosis) runs in the loggingx-ai service (../loggingx-ai in this
+  # repository), which holds the DeepSeek and Qwen keys. Without a URL the AI pages report that AI is not configured.
   ai:
-    # The loggingx-ai service (../loggingx-ai in this repository) diagnoses errors with several agents on
-    # DeepSeek and Qwen. When its URL is set, AI diagnosis goes there instead of a single prompt to the provider
-    # chosen in the settings (which the assistant keeps using).
-    agent:
-      url: ${LOGGINGX_AI_AGENT_URL:}
-      api-key: ${LOGGINGX_AI_AGENT_API_KEY:}
-      timeout: ${LOGGINGX_AI_AGENT_TIMEOUT:5m}
+    url: ${LOGGINGX_AI_URL:}
+    # Must match the service's LOGGINGX_AI_API_KEY; sent as the X-API-Key header.
+    api-key: ${LOGGINGX_AI_API_KEY:}
+    # One request; a diagnosis takes several model calls.
+    timeout: ${LOGGINGX_AI_TIMEOUT:5m}
   # Log line storage when loggingx.log.storage is clickhouse; the database must exist, the table is created.
   clickhouse:
     url: ${LOGGINGX_CLICKHOUSE_URL:jdbc:clickhouse://localhost:8123/loggingx}

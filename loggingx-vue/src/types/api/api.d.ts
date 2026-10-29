@@ -592,12 +592,12 @@ declare namespace Api {
       model: string | null
       /** 每天自动分析（新错误、告警）的上限，手动分析不计 */
       dailyLimit: number
-      /** 已配置 API Key 的提供方 */
+      /** loggingx-ai 已配置 API Key 的提供方 */
       providers: string[]
       usedToday: number
       notification: AlertCenter.RuleNotify
-      /** 分析交给 loggingx-ai 多 agent 服务（LOGGINGX_AI_AGENT_URL），提供方和模型由它决定 */
-      agent: boolean
+      /** 是否已接入 loggingx-ai（LOGGINGX_AI_URL）；诊断的模型由它决定 */
+      enabled: boolean
     }
 
     interface StoreConfig {

@@ -1,6 +1,6 @@
 # loggingx-ai
 
-[LoggingX](../README.zh-CN.md) 的 AI 诊断服务：把一条错误日志和它堆栈指向的源代码交给多个 agent 协作分析，给出结论、根本原因、修改建议和 diff。
+[LoggingX](../README.zh-CN.md) 的 AI 服务，LoggingX 的所有 AI 功能都经由它调用模型：AI 诊断把一条错误日志和它堆栈指向的源代码交给多个 agent 协作分析，给出结论、根本原因、修改建议和 diff；对话接口供 `/api/ai/chat` 和智能问答使用。
 
 技术栈：Python 3.14、FastAPI、LangGraph、DeepSeek、通义千问（Qwen）。
 
@@ -92,11 +92,21 @@ uv run ruff check .
 
 **`POST /api/v1/diagnoses/stream`**：请求同上，返回 SSE。每个节点完成时发 `agent` 事件（`{"agent": "...", "output": {...}}`），最后是 `result`（同上面的响应）和 `done`；出错时发 `error`。
 
+**`POST /api/v1/chat`**：单轮对话，供 loggingx-java 的 `/api/ai/chat` 和智能问答使用。
+
+```json
+{"message": "订单服务为什么报错？", "systemPrompt": "你是运维助手", "provider": "deepseek", "model": null}
+```
+
+只有 `message` 必填。`provider`（`deepseek` / `qwen`）不填时用 `LOGGINGX_AI_CHAT_MODEL`（默认 `deepseek:deepseek-chat`），失败时换另一个提供方；指定了就只用它，`model` 留空为该提供方的默认模型。响应 `{"provider", "model", "content", "promptTokens", "completionTokens"}`。提供方未知或没有密钥时返回 `400`，模型调用失败返回 `502`。
+
+**`POST /api/v1/chat/stream`**：请求同上，返回 SSE：`message`（`{"content": "..."}` 增量文本）、最后 `done`（同上面的响应）；出错时发 `error`（`{"message": "..."}`）。只在还没输出文字时才会换提供方。
+
 **`GET /health`**：`{"status": "ok", "providers": ["deepseek", "qwen"]}`。
 
 ## 与 loggingx-java 对接
 
-在 loggingx-java 设置 `LOGGINGX_AI_AGENT_URL=http://localhost:8001`（和本服务的 `LOGGINGX_AI_API_KEY` 对应的 `LOGGINGX_AI_AGENT_API_KEY`），`AiDiagnosisService` 就会通过 `AiAgentClient` 把日志、`CodeRepositories.snippets(...)` 取出的代码和提交号发到 `POST /api/v1/diagnoses`，并把结果写回 `ai_diagnosis`；不设置时仍用单模型分析。详见 [`loggingx-java/docs/ai-diagnosis.md`](../loggingx-java/docs/ai-diagnosis.md)。
+在 loggingx-java 设置 `LOGGINGX_AI_URL=http://localhost:8001`（和与本服务相同的 `LOGGINGX_AI_API_KEY`）。loggingx-java 不再直接调用任何模型：`AiDiagnosisService` 通过 `AiAgentClient` 把日志、`CodeRepositories.snippets(...)` 取出的代码和提交号发到 `POST /api/v1/diagnoses` 并把结果写回 `ai_diagnosis`；`/api/ai/chat` 和智能问答走 `/api/v1/chat`、`/api/v1/chat/stream`。不设置时这些 AI 功能不可用。详见 [`loggingx-java/docs/ai-diagnosis.md`](../loggingx-java/docs/ai-diagnosis.md)。
 
 注意：日志和代码片段会发送给所选的模型提供方，请确认符合公司的代码安全要求；需要时可把 `*_BASE_URL` 指向内部模型网关。AI 给出的修改需要评审和测试后再合入。
 

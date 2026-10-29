@@ -13,21 +13,22 @@ from pydantic import BaseModel
 
 from loggingx_ai.config import Settings, get_settings
 from loggingx_ai.diagnosis import Diagnoser
-from loggingx_ai.llm import ChatClient, LlmError
-from loggingx_ai.schemas import DiagnoseRequest, DiagnoseResponse
+from loggingx_ai.llm import ChatClient, LlmError, ProviderUnavailable
+from loggingx_ai.schemas import ChatReply, ChatRequest, DiagnoseRequest, DiagnoseResponse
 
 log = logging.getLogger(__name__)
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = None,
+               client: ChatClient | None = None) -> FastAPI:
     settings = settings or get_settings()
-    client = ChatClient(settings)
+    client = client or ChatClient(settings)
     diagnoser = diagnoser or Diagnoser(client, settings)
 
     app = FastAPI(
         title="LoggingX AI",
-        description="多 agent 错误诊断：日志分析、代码分析、根因、修复、评审。",
+        description="LoggingX 的 AI 服务：多 agent 错误诊断和对话接口（DeepSeek、通义千问）。",
         version="0.1.0",
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,
@@ -70,6 +71,40 @@ def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = N
             except LlmError as error:
                 yield _sse("error", {"message": str(error)})
             yield _sse("done", {})
+
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/v1/chat", response_model=ChatReply, response_model_by_alias=True, dependencies=protected,
+              tags=["chat"])
+    async def chat(payload: ChatRequest) -> ChatReply:
+        try:
+            return await client.complete(payload)
+        except ProviderUnavailable as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
+        except LlmError as error:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)) from None
+
+    @app.post("/api/v1/chat/stream", dependencies=protected, tags=["chat"])
+    async def chat_stream(payload: ChatRequest, request: Request) -> StreamingResponse:
+        """SSE: `message` events with {"content"} pieces, then `done` with the whole reply, or `error`."""
+
+        try:
+            client.chat_specs(payload)
+        except ProviderUnavailable as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
+
+        async def events() -> AsyncIterator[str]:
+            try:
+                async for item in client.stream(payload):
+                    if await request.is_disconnected():
+                        return
+                    if isinstance(item, ChatReply):
+                        yield _sse("done", item)
+                    else:
+                        yield _sse("message", {"content": item})
+            except LlmError as error:
+                yield _sse("error", {"message": str(error)})
 
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
