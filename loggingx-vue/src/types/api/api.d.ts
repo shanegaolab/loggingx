@@ -596,6 +596,8 @@ declare namespace Api {
       providers: string[]
       usedToday: number
       notification: AlertCenter.RuleNotify
+      /** 分析交给 loggingx-ai 多 agent 服务（LOGGINGX_AI_AGENT_URL），提供方和模型由它决定 */
+      agent: boolean
     }
 
     interface StoreConfig {

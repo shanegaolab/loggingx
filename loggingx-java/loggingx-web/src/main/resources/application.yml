@@ -128,6 +128,14 @@ loggingx:
       # Comma-separated.
       topics: ${LOGGINGX_KAFKA_TOPICS:loggingx-logs}
       group-id: ${LOGGINGX_KAFKA_GROUP_ID:loggingx}
+  ai:
+    # The loggingx-ai service (https://github.com/shanegaolab/loggingx-ai) diagnoses errors with several agents on
+    # DeepSeek and Qwen. When its URL is set, AI diagnosis goes there instead of a single prompt to the provider
+    # chosen in the settings (which the assistant keeps using).
+    agent:
+      url: ${LOGGINGX_AI_AGENT_URL:}
+      api-key: ${LOGGINGX_AI_AGENT_API_KEY:}
+      timeout: ${LOGGINGX_AI_AGENT_TIMEOUT:5m}
   # Log line storage when loggingx.log.storage is clickhouse; the database must exist, the table is created.
   clickhouse:
     url: ${LOGGINGX_CLICKHOUSE_URL:jdbc:clickhouse://localhost:8123/loggingx}

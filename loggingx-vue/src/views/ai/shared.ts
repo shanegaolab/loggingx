@@ -28,7 +28,8 @@ export const CONFIDENCE: Record<string, { label: string; type: 'success' | 'warn
 export const PROVIDER_NAMES: Record<string, string> = {
   deepseek: 'DeepSeek',
   openai: 'OpenAI',
-  anthropic: 'Anthropic Claude'
+  anthropic: 'Anthropic Claude',
+  'loggingx-ai': 'LoggingX AI 多 agent'
 }
 
 /** 统一 diff 的每一行及其类型，用于着色 */
