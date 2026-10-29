@@ -106,6 +106,7 @@ public class AiDiagnosisService implements DisposableBean {
 
     private final AiMapper mapper;
     private final AiChatService chatService;
+    private final AiAgentClient agentClient;
     private final CodeRepositories repositories;
     private final LogRecordRepository recordRepository;
     private final LogStoreRepository storeRepository;
@@ -117,11 +118,12 @@ public class AiDiagnosisService implements DisposableBean {
         return thread;
     });
 
-    public AiDiagnosisService(AiMapper mapper, AiChatService chatService, CodeRepositories repositories,
-                              LogRecordRepository recordRepository, LogStoreRepository storeRepository,
-                              NotifyService notifyService, SecretCipher cipher) {
+    public AiDiagnosisService(AiMapper mapper, AiChatService chatService, AiAgentClient agentClient,
+                              CodeRepositories repositories, LogRecordRepository recordRepository,
+                              LogStoreRepository storeRepository, NotifyService notifyService, SecretCipher cipher) {
         this.mapper = mapper;
         this.chatService = chatService;
+        this.agentClient = agentClient;
         this.repositories = repositories;
         this.recordRepository = recordRepository;
         this.storeRepository = storeRepository;
@@ -151,9 +153,10 @@ public class AiDiagnosisService implements DisposableBean {
     /**
      * @param providers  the configured AI providers
      * @param usedToday  automatic analyses started today
+     * @param agent      whether analyses go to the loggingx-ai service, which picks its own models
      */
     public record SettingsView(String provider, String model, int dailyLimit, List<String> providers, int usedToday,
-                               RuleNotify notification) {
+                               RuleNotify notification, boolean agent) {
     }
 
     public SettingsView settings() {
@@ -161,7 +164,7 @@ public class AiDiagnosisService implements DisposableBean {
         return new SettingsView(settings.provider(), settings.model(), settings.dailyLimit(),
                 chatService.providers().stream().map(AiProvider::id).toList(),
                 mapper.countAutomaticSince(startOfToday()),
-                notifyService.ruleNotify(NotifyService.RULE_AI, 0L));
+                notifyService.ruleNotify(NotifyService.RULE_AI, 0L), agentClient.enabled());
     }
 
     public SettingsView saveSettings(String provider, String model, Integer dailyLimit, RuleNotify notification,
@@ -444,14 +447,8 @@ public class AiDiagnosisService implements DisposableBean {
                 null);
         try {
             AiSettings settings = currentSettings();
-            List<AiProvider> available = chatService.providers();
-            if (available.isEmpty()) {
-                throw new IllegalStateException("No AI provider is configured: set one of LOGGINGX_AI_DEEPSEEK_API_KEY, "
-                        + "LOGGINGX_AI_OPENAI_API_KEY or LOGGINGX_AI_ANTHROPIC_API_KEY");
-            }
-            AiProvider provider = settings.provider() == null ? available.get(0)
-                    : AiProvider.fromId(settings.provider()).filter(available::contains).orElseThrow(() ->
-                    new IllegalStateException("The AI provider " + settings.provider() + " is not configured"));
+            // loggingx-ai chooses its own models; the provider setting applies to single-model analysis only.
+            AiProvider provider = agentClient.enabled() ? null : provider(settings);
 
             String commit = null;
             String repoNote = "未配置代码仓库，只能根据日志分析。";
@@ -472,10 +469,21 @@ public class AiDiagnosisService implements DisposableBean {
                 }
             }
             String store = storeRepository.findById(diagnosis.storeId()).map(LogStore::name).orElse("-");
-            String prompt = prompt(diagnosis, store, commit, refs, repoNote);
-            AiChatReply reply = chatService.chat(new AiChatCommand(provider.id(), prompt, SYSTEM_PROMPT,
-                    settings.model()));
-            Answer answer = Answer.parse(reply.content());
+            Reply reply;
+            if (provider == null) {
+                AiAgentClient.Result result = agentClient.diagnose(new AiAgentClient.Request(diagnosis.logText(),
+                        diagnosis.storeId(), store, diagnosis.host(), diagnosis.source(), diagnosis.logTime(), commit,
+                        refs));
+                reply = new Reply(AiAgentClient.PROVIDER, result.model(), new Answer(result.summary(),
+                        result.rootCause(), result.suggestion(), result.diff(), confidence(result.confidence())),
+                        result.promptTokens(), result.completionTokens());
+            } else {
+                AiChatReply chat = chatService.chat(new AiChatCommand(provider.id(),
+                        prompt(diagnosis, store, commit, refs, repoNote), SYSTEM_PROMPT, settings.model()));
+                reply = new Reply(chat.provider(), chat.model(), Answer.parse(chat.content()), chat.promptTokens(),
+                        chat.completionTokens());
+            }
+            Answer answer = reply.answer();
             AiDiagnosis done = update(diagnosis, AiDiagnosis.SUCCESS, commit, JSON.writeValueAsString(refs),
                     reply.provider(), reply.model(), truncate(answer.summary(), 500), answer.rootCause(),
                     answer.suggestion(), answer.diff(), answer.confidence(), reply.promptTokens(),
@@ -488,6 +496,29 @@ public class AiDiagnosisService implements DisposableBean {
             update(diagnosis, AiDiagnosis.FAILED, null, null, null, null, null, null, null, null, null, null, null,
                     truncate(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), 1000));
         }
+    }
+
+    private AiProvider provider(AiSettings settings) {
+        List<AiProvider> available = chatService.providers();
+        if (available.isEmpty()) {
+            throw new IllegalStateException("No AI provider is configured: set LOGGINGX_AI_AGENT_URL, or one of "
+                    + "LOGGINGX_AI_DEEPSEEK_API_KEY, LOGGINGX_AI_OPENAI_API_KEY or LOGGINGX_AI_ANTHROPIC_API_KEY");
+        }
+        return settings.provider() == null ? available.get(0)
+                : AiProvider.fromId(settings.provider()).filter(available::contains).orElseThrow(() ->
+                new IllegalStateException("The AI provider " + settings.provider() + " is not configured"));
+    }
+
+    /**
+     * A model's answer with who gave it and what it cost.
+     */
+    private record Reply(String provider, String model, Answer answer, Integer promptTokens,
+                         Integer completionTokens) {
+    }
+
+    private static String confidence(String value) {
+        String clean = value == null ? "" : value.toLowerCase(Locale.ROOT);
+        return Set.of("high", "medium", "low").contains(clean) ? clean : null;
     }
 
     private AiDiagnosis update(AiDiagnosis d, String status, String commit, String codeRefs, String provider,

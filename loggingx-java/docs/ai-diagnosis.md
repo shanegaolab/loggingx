@@ -59,6 +59,18 @@
 3. 把日志和代码（带行号，标出出错行）发给模型，要求返回 JSON：`summary`、`rootCause`、`suggestion`（Markdown）、`diff`（统一 diff）、`confidence`（high / medium / low）。模型没有按要求返回 JSON 时，原文作为修改建议保存。
 4. 结果保存在「诊断记录」，可标记已处理、忽略或重新分析；标记会同步到它所属的错误归类。
 
+### 多 agent 诊断（loggingx-ai）
+
+设置 `LOGGINGX_AI_AGENT_URL`（如 `http://localhost:8001`）后，第 3 步不再由单个模型完成，而是把日志、代码片段和提交号发给 [loggingx-ai](https://github.com/shanegaolab/loggingx-ai) 服务：日志分析（DeepSeek）和代码分析（通义千问 Coder）并行，再由根因、修复、评审三个 agent 依次完成，评审不通过会退回修复重做。各 agent 的模型在 loggingx-ai 中配置，「设置」里的提供方和模型此时只用于智能问答。诊断记录的提供方显示为「LoggingX AI 多 agent」，模型为根因 agent 使用的模型，token 数是所有 agent 的合计。
+
+| 变量 | 说明 |
+| --- | --- |
+| `LOGGINGX_AI_AGENT_URL` | loggingx-ai 的地址，留空则用单模型分析 |
+| `LOGGINGX_AI_AGENT_API_KEY` | 与 loggingx-ai 的 `LOGGINGX_AI_API_KEY` 一致，以 `X-API-Key` 请求头发送 |
+| `LOGGINGX_AI_AGENT_TIMEOUT` | 单次诊断的超时，默认 `5m` |
+
+loggingx-ai 调用失败时，这次诊断记为失败并保存错误信息，可以「重新分析」。
+
 注意：代码片段会发送给所选的 AI 提供方，请确认这符合公司的代码安全要求；需要时可让 `_BASE_URL` 指向公司内部的模型网关。AI 给出的修改需要评审和测试后再合入。
 
 ## 提醒

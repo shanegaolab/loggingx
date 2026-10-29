@@ -9,7 +9,16 @@
         </div>
       </header>
       <ElAlert
-        v-if="settings && !settings.providers.length"
+        v-if="settings?.agent"
+        type="success"
+        :closable="false"
+        show-icon
+        title="AI 诊断由 loggingx-ai 多 agent 服务完成"
+        description="日志分析、代码分析、根因、修复和评审分别由 DeepSeek、通义千问完成，模型在 loggingx-ai 中配置；下面的提供方和模型只用于智能问答。"
+        class="mb-4"
+      />
+      <ElAlert
+        v-else-if="settings && !settings.providers.length"
         type="warning"
         :closable="false"
         show-icon
