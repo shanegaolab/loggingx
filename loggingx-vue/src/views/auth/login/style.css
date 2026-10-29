@@ -1,0 +1,81 @@
+@reference '@styles/core/tailwind.css';
+
+/* 授权页右侧区域（登录、注册、忘记密码共用）：表单在右侧居中，宽 400px */
+.auth-right-wrap {
+  @apply absolute inset-0 w-[400px] h-fit max-h-full m-auto overflow-y-auto
+    max-sm:px-6 max-sm:w-full
+    animate-[slideInRight_0.7s_cubic-bezier(0.28,0.11,0.32,1)_both]
+    max-md:animate-none;
+
+  scrollbar-width: none;
+
+  .form {
+    @apply py-10;
+  }
+
+  .title {
+    @apply text-g-900 text-[34px] leading-tight font-semibold tracking-[-0.02em]
+      max-md:text-3xl max-sm:pt-10;
+  }
+
+  .sub-title {
+    @apply mt-2 text-g-600 text-[15px];
+  }
+
+  .custom-height {
+    @apply !h-[44px];
+  }
+
+  /* 输入框、下拉框：大圆角、细描边，聚焦时主色描边 + 柔和光圈 */
+  :deep(.el-input__wrapper),
+  :deep(.el-select__wrapper) {
+    @apply rounded-xl;
+
+    min-height: 44px;
+    padding: 0 14px;
+    background-color: var(--default-box-color);
+    box-shadow: 0 0 0 1px var(--el-border-color) inset;
+    transition:
+      box-shadow 0.2s,
+      background-color 0.2s;
+  }
+
+  :deep(.el-input__wrapper:hover),
+  :deep(.el-select__wrapper:hover) {
+    box-shadow: 0 0 0 1px var(--el-border-color-darker) inset;
+  }
+
+  :deep(.el-input__wrapper.is-focus),
+  :deep(.el-select__wrapper.is-focused) {
+    box-shadow:
+      0 0 0 1px var(--el-color-primary) inset,
+      0 0 0 4px color-mix(in srgb, var(--el-color-primary) 18%, transparent);
+  }
+
+  :deep(.el-form-item) {
+    @apply mb-4;
+  }
+
+  /* 主按钮 */
+  :deep(.el-button.custom-height) {
+    @apply rounded-xl text-[15px] font-medium;
+  }
+}
+
+/* 底部版权 */
+.auth-footer {
+  @apply absolute bottom-6 left-0 right-0 text-center text-xs text-g-500 max-sm:hidden;
+}
+
+/* 滑入动画 */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

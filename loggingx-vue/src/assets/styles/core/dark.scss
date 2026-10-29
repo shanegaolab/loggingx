@@ -1,0 +1,155 @@
+/*
+* 深色主题
+* 单页面移除深色主题 document.getElementsByTagName("html")[0].removeAttribute('class')
+*/
+
+/* 覆盖element-plus默认深色背景色 */
+html.dark {
+  // element-plus
+  --el-bg-color: var(--default-box-color);
+
+  // 富文本编辑器
+  // 工具栏背景颜色
+  --w-e-toolbar-bg-color: #1c1c1e;
+  // 输入区域背景颜色
+  --w-e-textarea-bg-color: #000000;
+  // 工具栏文字颜色
+  --w-e-toolbar-color: var(--logx-gray-600);
+  // 选中菜单颜色
+  --w-e-toolbar-active-bg-color: #2c2c2e;
+  // 弹窗边框颜色
+  --w-e-toolbar-border-color: var(--default-border-dashed);
+  // 分割线颜色
+  --w-e-textarea-border-color: var(--default-border-dashed);
+  // 链接输入框边框颜色
+  --w-e-modal-button-border-color: var(--default-border-dashed);
+  // 表格头颜色
+  --w-e-textarea-slight-bg-color: #1c1c1e;
+  // 按钮背景颜色
+  --w-e-modal-button-bg-color: #2c2c2e;
+  // hover toolbar 背景颜色
+  --w-e-toolbar-active-color: var(--logx-gray-800);
+}
+
+.dark {
+  .page-content .article-list .item .left .outer > div {
+    border-right-color: var(--dark-border-color) !important;
+  }
+
+  // 富文本编辑器
+  .editor-wrapper {
+    *:not(pre code *) {
+      color: inherit !important;
+    }
+  }
+  // 分隔线
+  .w-e-bar-divider {
+    background-color: var(--logx-gray-300) !important;
+  }
+
+  .w-e-select-list,
+  .w-e-drop-panel,
+  .w-e-bar-item-group .w-e-bar-item-menus-container,
+  .w-e-text-container [data-slate-editor] pre > code {
+    border: 1px solid var(--default-border) !important;
+  }
+
+  // 下拉选择框
+  .w-e-select-list {
+    background-color: var(--default-box-color) !important;
+  }
+
+  /* 下拉选择框 hover 样式调整 */
+  .w-e-select-list ul li:hover,
+    /* 工具栏 hover 按钮背景颜色 */
+    .w-e-bar-item button:hover {
+    background-color: #2c2c2e !important;
+  }
+
+  /* 代码块 */
+  .w-e-text-container [data-slate-editor] pre > code {
+    background-color: #2c2c2e !important;
+    text-shadow: none !important;
+  }
+
+  /* 引用 */
+  .w-e-text-container [data-slate-editor] blockquote {
+    border-left: 4px solid var(--default-border-dashed) !important;
+    background-color: var(--logx-color);
+  }
+
+  .editor-wrapper {
+    .w-e-text-container [data-slate-editor] .table-container th:last-of-type {
+      border-right: 1px solid var(--default-border-dashed) !important;
+    }
+
+    .w-e-modal {
+      background-color: var(--logx-color);
+    }
+  }
+}
+
+/*
+* 暗黑模式按钮（参照 macOS 深色模式）：
+* - 默认按钮：中性灰底、白字、无描边（亮色模式下的蓝色描边在黑底上过于刺眼，且与主按钮难以区分）
+* - 彩色实心按钮：悬停提亮、按下压暗（Element 默认与卡片色混合，悬停反而变暗）
+* - 绿色、橙色实心按钮用深色文字，白字在这两种亮色上对比度不足（禁用时底色变暗，仍用白字）；信息按钮用深灰底
+*/
+$solid-types: primary, success, warning, danger, info;
+
+html.dark {
+  .el-button:not(
+    .el-button--primary,
+    .el-button--success,
+    .el-button--warning,
+    .el-button--danger,
+    .el-button--info
+  ) {
+    --el-button-text-color: var(--el-text-color-primary);
+    --el-button-bg-color: rgba(255, 255, 255, 0.1);
+    --el-button-border-color: transparent;
+    --el-button-hover-text-color: var(--el-text-color-primary);
+    --el-button-hover-bg-color: rgba(255, 255, 255, 0.16);
+    --el-button-hover-border-color: transparent;
+    --el-button-active-text-color: var(--el-text-color-primary);
+    --el-button-active-bg-color: rgba(255, 255, 255, 0.22);
+    --el-button-active-border-color: transparent;
+    --el-button-disabled-text-color: var(--el-text-color-placeholder);
+    --el-button-disabled-bg-color: rgba(255, 255, 255, 0.05);
+    --el-button-disabled-border-color: transparent;
+    --el-button-outline-color: rgba(255, 255, 255, 0.3);
+
+    // 文字按钮、链接按钮保持透明背景，悬停时浅灰底
+    &.is-text,
+    &.is-link {
+      --el-button-text-color: var(--el-text-color-regular);
+    }
+  }
+
+  @each $type in $solid-types {
+    .el-button--#{$type}:not(.is-plain, .is-text, .is-link) {
+      --el-button-hover-bg-color: color-mix(in srgb, var(--el-color-#{$type}) 86%, #ffffff);
+      --el-button-hover-border-color: var(--el-button-hover-bg-color);
+      --el-button-active-bg-color: color-mix(in srgb, var(--el-color-#{$type}) 82%, #000000);
+      --el-button-active-border-color: var(--el-button-active-bg-color);
+    }
+  }
+
+  .el-button--success,
+  .el-button--warning {
+    &:not(.is-plain, .is-text, .is-link) {
+      --el-button-text-color: rgba(0, 0, 0, 0.88);
+      --el-button-hover-text-color: rgba(0, 0, 0, 0.88);
+      --el-button-active-text-color: rgba(0, 0, 0, 0.88);
+    }
+  }
+
+  .el-button--info:not(.is-plain, .is-text, .is-link) {
+    --el-button-bg-color: #48484a;
+    --el-button-border-color: #48484a;
+    --el-button-hover-bg-color: #545456;
+    --el-button-hover-border-color: #545456;
+    --el-button-active-bg-color: #3a3a3c;
+    --el-button-active-border-color: #3a3a3c;
+  }
+}

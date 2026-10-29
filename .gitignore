@@ -1,0 +1,18 @@
+# 各子项目有自己的 .gitignore（loggingx-java/.gitignore、loggingx-vue/.gitignore），这里只放通用规则
+# Each sub-project keeps its own .gitignore; only shared rules live here.
+
+# Secrets and local configuration
+.env.local
+.env.*.local
+loggingx-java/.env
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Build output
+**/target/
+**/node_modules/
+**/dist/

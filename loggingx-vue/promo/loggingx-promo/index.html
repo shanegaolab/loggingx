@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoggingX · 私有部署的日志平台</title>
+<meta name="description" content="LoggingX：日志采集、存储、查询、告警、归档与 AI 运维，一套私有部署的系统。断网、宕机、重启都不丢日志。">
+<link rel="canonical" href="https://loggingx.com/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://loggingx.com/">
+<meta property="og:title" content="LoggingX · 私有部署的日志平台">
+<meta property="og:description" content="日志采集、存储、查询、告警、归档与 AI 运维，一套私有部署的系统。源码见 GitHub：shanegaolab/loggingx。">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='2' y='5' width='24' height='3' rx='1.5' fill='%233B6FF0'/%3E%3Crect x='2' y='12.5' width='16' height='3' rx='1.5' fill='%23E08A00'/%3E%3Crect x='2' y='20' width='10' height='3' rx='1.5' fill='%23E5394B'/%3E%3C/svg%3E">
+<style>
+/* 布局：浅色页面 + 深海军蓝色带，日志级别色（INFO 蓝 / WARN 琥珀 / ERROR 红）贯穿全页 */
+:root {
+  --ground: #f4f6f8;
+  --paper: #ffffff;
+  --ink: #0d1b2a;
+  --ink-2: #3b4a5c;
+  --muted: #4a5868;
+  --line: #dce2e8;
+  --navy: #0d1b2a;
+  --navy-2: #102338;
+  --navy-3: #16304a;
+  --navy-line: #1f3650;
+  --on-navy: #e6edf4;
+  --on-navy-2: #b4c3d2;
+  --on-navy-3: #8fa3b8;
+  --accent: #1f4fd8;
+  --accent-hover: #163ba6;
+  --info: #1d4ed8;
+  --warn: #b45309;
+  --error: #c8102e;
+  --ok: #15803d;
+  --ai: #7c3aed;
+  --info-d: #60a5fa;
+  --warn-d: #fbbf24;
+  --error-d: #ff6b78;
+  --ok-d: #4ade80;
+  --ai-d: #c4b5fd;
+  --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --wrap: 1200px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+img, svg { max-width: 100%; }
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+p { margin: 0; }
+.mono { font-family: var(--mono); }
+.wrap { max-width: var(--wrap); margin: 0 auto; }
+.band { padding-block: 88px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+.band--navy { background: var(--navy); color: var(--on-navy); }
+.band--grey { background: #e9edf1; }
+.eyebrow { font-family: var(--mono); font-size: 13px; letter-spacing: .12em; color: var(--muted); }
+.band--navy .eyebrow { color: var(--on-navy-3); }
+.h2 { font-size: clamp(28px, 3.4vw, 44px); font-weight: 900; letter-spacing: -.02em; line-height: 1.25; }
+.lead { font-size: 17px; line-height: 1.8; color: var(--ink-2); }
+.band--navy .lead { color: var(--on-navy-2); }
+.section-head { display: flex; flex-direction: column; gap: 12px; max-width: 760px; margin-bottom: 44px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; border-radius: 10px; font-size: 17px; font-weight: 700; text-decoration: none; border: 1.5px solid transparent; cursor: pointer; font-family: inherit; }
+.btn--primary { background: var(--accent); color: #fff; }
+.btn--primary:hover { background: var(--accent-hover); color: #fff; }
+.btn--ghost { border-color: var(--ink); color: var(--ink); background: transparent; }
+.btn--ghost:hover { background: var(--ink); color: #fff; }
+.btn--small { min-height: 44px; padding: 0 20px; font-size: 15px; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #f59e0b; outline-offset: 3px; }
+
+/* 顶栏 */
+.nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: rgba(244,246,248,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); padding: 14px max(24px, env(safe-area-inset-right, 0px)) 14px max(24px, env(safe-area-inset-left, 0px)); }
+.nav .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 32px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+.brand span { font-size: 22px; font-weight: 900; letter-spacing: -.02em; }
+.nav__links { display: flex; flex-wrap: wrap; gap: 6px 26px; flex: 1 1 auto; font-size: 15px; }
+.nav__links a { color: var(--ink-2); text-decoration: none; }
+.nav__links a:hover { color: var(--accent); }
+.gh { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font-size: 15px; font-weight: 600; text-decoration: none; }
+.gh:hover { color: var(--ink); border-color: var(--ink); }
+.repo { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 14px; color: var(--ink-2); text-decoration: none; }
+.repo:hover { color: var(--accent); }
+.open { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; justify-content: space-between; margin-top: 28px; padding: 24px 28px; border-radius: 16px; background: var(--navy); color: var(--on-navy); }
+.open p { font-size: 15px; color: var(--on-navy-2); margin-top: 6px; }
+.open strong { font-size: 20px; }
+.open .btn { background: #fff; color: var(--navy); }
+.open .btn:hover { background: #e6edf4; color: var(--navy); }
+.footer a { color: var(--muted); }
+
+/* 首屏 */
+.hero { padding-top: 72px; }
+.hero .wrap { display: flex; flex-wrap: wrap; gap: 56px; align-items: center; }
+.hero__text { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.pill { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; }
+.hero h1 { font-size: clamp(40px, 5.4vw, 72px); line-height: 1.12; font-weight: 900; letter-spacing: -.03em; }
+.hero__lead { font-size: 19px; line-height: 1.75; color: var(--ink-2); max-width: 34em; }
+.hero__actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.platforms { display: flex; flex-wrap: wrap; gap: 8px 20px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.hero__visual { flex: 1 1 560px; min-width: 0; }
+.console { background: #0f2236; border-radius: 16px; padding: 20px; box-shadow: 0 30px 60px -30px rgba(13,27,42,.55); }
+.console__bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.console__query { flex: 1 1 220px; min-width: 0; padding: 10px 14px; border-radius: 8px; background: var(--navy-3); color: #d6e0ea; font-family: var(--mono); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.console__range { padding: 8px 12px; border-radius: 8px; background: var(--navy-3); color: var(--on-navy-3); font-family: var(--mono); font-size: 12px; }
+.histogram { display: flex; align-items: flex-end; gap: 3px; height: 96px; margin: 18px 0 14px; padding-bottom: 6px; border-bottom: 1px solid #23405c; }
+.histogram span { flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.histogram b { display: block; background: #f04452; border-radius: 2px 2px 0 0; }
+.histogram em { display: block; background: #3b82f6; opacity: .75; }
+.loglines { display: flex; flex-direction: column; gap: 2px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+.logline { display: flex; gap: 12px; padding: 5px 8px; border-radius: 6px; min-width: 0; }
+.logline .t { color: var(--on-navy-3); flex: none; }
+.logline .l { flex: none; width: 44px; font-weight: 600; }
+.logline .m { color: #d6e0ea; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logline--error { background: rgba(240,68,82,.14); }
+.lv-info { color: var(--info-d); } .lv-warn { color: var(--warn-d); } .lv-error { color: var(--error-d); }
+.toast { position: relative; margin: -36px 16px 0 auto; max-width: 340px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: 0 18px 40px -18px rgba(13,27,42,.45); display: flex; flex-direction: column; gap: 6px; }
+.toast__kind { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--error); }
+.toast strong { font-size: 15px; }
+.toast p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* 数据流 */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.flow li { display: flex; flex-direction: column; gap: 10px; padding: 22px; background: #13263a; border-radius: 0 0 10px 10px; border-top: 3px solid #3b82f6; }
+.flow li.warn { border-top-color: #f59e0b; } .flow li.ok { border-top-color: #16a34a; } .flow li.ai { border-top-color: #a78bfa; }
+.flow .n { font-family: var(--mono); font-size: 13px; color: var(--on-navy-3); }
+.flow .h { font-size: 18px; font-weight: 700; }
+.flow .d { font-size: 14px; line-height: 1.7; color: var(--on-navy-2); }
+
+/* 功能行 */
+.features { display: flex; flex-direction: column; gap: 72px; }
+.feature { display: flex; flex-wrap: wrap; gap: 40px; align-items: center; }
+.feature--reverse { flex-wrap: wrap-reverse; }
+.feature__text { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.feature__text h3 { font-size: 28px; font-weight: 900; }
+.feature__visual { flex: 1 1 480px; min-width: 0; }
+.ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
+.ticks li { display: flex; gap: 10px; align-items: baseline; }
+.ticks li::before { content: "—"; color: var(--info); font-weight: 900; }
+.terminal { background: #0f2236; border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.terminal small { font-family: var(--mono); font-size: 12px; color: var(--on-navy-3); }
+.terminal pre { margin: 0; font-family: var(--mono); font-size: 14px; line-height: 1.8; color: #d6e0ea; overflow-x: auto; }
+.terminal .c { color: var(--on-navy-3); } .terminal .ok { color: var(--ok-d); }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.chip { padding: 6px 10px; border-radius: 6px; background: #eef2f6; font-family: var(--mono); font-size: 13px; }
+.chip--error { background: #fdecec; color: var(--error); font-weight: 600; }
+.code { margin: 0; padding: 14px; border-radius: 8px; background: #f7f9fb; font-family: var(--mono); font-size: 13px; line-height: 1.7; overflow-x: auto; white-space: pre; }
+.caption { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.meter { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.meter span { font-size: 13px; color: var(--muted); }
+.meter strong { font-family: var(--mono); font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.meter i { display: block; height: 6px; border-radius: 3px; background: #eef2f6; overflow: hidden; }
+.meter i b { display: block; height: 6px; }
+
+/* AI 运维 */
+.ai-intro { display: flex; flex-wrap: wrap; gap: 24px 56px; align-items: flex-end; margin-bottom: 44px; }
+.ai-intro .section-head { margin-bottom: 0; flex: 1 1 520px; }
+.ai-badges { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 1 420px; }
+.ai-badges span { padding: 6px 12px; border: 1px solid var(--navy-line); border-radius: 999px; font-size: 13px; color: var(--on-navy-2); }
+.ai-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 20px; align-items: start; }
+.ai-panel { background: var(--navy-2); border: 1px solid var(--navy-line); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ai-panel__head { display: flex; align-items: center; gap: 10px; }
+.ai-panel__head h3 { font-size: 20px; font-weight: 800; color: #fff; }
+.ai-tag { padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--ai-d); background: rgba(167,139,250,.14); }
+.ai-panel > p { font-size: 15px; line-height: 1.75; color: var(--on-navy-2); }
+.ask { align-self: flex-end; max-width: 88%; padding: 10px 14px; border-radius: 12px 12px 2px; background: #3355e0; color: #fff; font-size: 14px; line-height: 1.7; }
+.reply { padding: 14px 16px; border-radius: 2px 12px 12px; background: #0d1b2a; border: 1px solid var(--navy-line); font-size: 14px; line-height: 1.8; color: #dbe5ef; display: flex; flex-direction: column; gap: 8px; }
+.reply ol { margin: 0; padding-left: 20px; }
+.cite { color: var(--ai-d); font-weight: 700; font-size: 12px; vertical-align: super; }
+.refs { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px dashed var(--navy-line); font-size: 13px; }
+.refs div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.refs b { color: var(--ai-d); flex: none; }
+.refs em { flex: none; font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 3px; line-height: 18px; }
+.refs span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--on-navy-2); }
+.k-kb { color: #5eead4; background: rgba(94,234,212,.12); } .k-ai { color: var(--ai-d); background: rgba(167,139,250,.14); } .k-log { color: var(--error-d); background: rgba(255,107,120,.12); } .k-code { color: var(--info-d); background: rgba(96,165,250,.12); }
+.diag-summary { padding: 14px 16px; border-radius: 10px; background: #0d1b2a; border: 1px solid var(--navy-line); display: flex; flex-direction: column; gap: 6px; }
+.diag-summary small { font-family: var(--mono); font-size: 12px; color: var(--on-navy-3); }
+.diag-summary strong { font-size: 17px; color: #fff; }
+.diag-summary .conf { align-self: flex-start; font-size: 12px; padding: 1px 8px; border-radius: 4px; color: var(--ok-d); background: rgba(74,222,128,.12); }
+.src { margin: 0; padding: 12px 0; border-radius: 10px; background: #0d1b2a; border: 1px solid var(--navy-line); font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: #c9d6e3; overflow-x: auto; }
+.src span { display: block; padding: 0 14px; white-space: pre; }
+.src .no { display: inline; padding: 0; color: #5c7690; margin-right: 12px; }
+.src .focus { background: rgba(240,68,82,.18); }
+.src .add { background: rgba(74,222,128,.12); color: #bbf7d0; }
+.src .del { background: rgba(255,107,120,.12); color: #fecdd3; }
+.src .hunk { color: var(--info-d); }
+.src__title { font-family: var(--mono); font-size: 12px; color: var(--on-navy-3); margin-bottom: -8px; }
+.ai-points { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0; margin-top: 28px; border-top: 1px solid var(--navy-line); }
+.ai-points div { padding: 20px 20px 4px 0; display: flex; flex-direction: column; gap: 6px; }
+.ai-points strong { font-size: 16px; color: #fff; }
+.ai-points span { font-size: 14px; line-height: 1.7; color: var(--on-navy-2); }
+
+/* 告警 */
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 20px; padding: clamp(24px, 4vw, 56px); display: flex; flex-direction: column; gap: 36px; }
+.panel__head { display: flex; flex-wrap: wrap; gap: 20px 48px; align-items: flex-end; }
+.panel__head > div { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.panel__head .lead { flex: 1 1 360px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.tile { padding: 24px; border-radius: 14px; background: var(--ground); display: flex; flex-direction: column; gap: 12px; }
+.tile strong { font-size: 18px; }
+.tile p { font-size: 15px; line-height: 1.7; color: var(--ink-2); }
+.tile small { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.messages { display: flex; flex-wrap: wrap; gap: 16px; }
+.message { flex: 1 1 320px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+.message small { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* 备份 */
+.archives { display: flex; flex-direction: column; gap: 10px; }
+.archive { display: flex; align-items: center; gap: 14px; padding: 14px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.archive .name { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.archive .size { font-family: var(--mono); color: var(--muted); }
+.archive .ok { color: var(--ok); font-weight: 700; } .archive .back { color: var(--info); font-weight: 700; }
+
+/* 可靠性：实测账本 + 一行日志的保险链路 + 场景清单 */
+.rel-head { display: flex; flex-wrap: wrap; gap: 32px 48px; align-items: flex-end; margin-bottom: 40px; }
+.rel-head .section-head { margin-bottom: 0; flex: 1 1 520px; }
+.score { flex: 0 1 340px; min-width: 0; border: 1px solid var(--navy-line); border-radius: 16px; padding: 26px; display: flex; flex-direction: column; gap: 8px; background: linear-gradient(180deg, rgba(74,222,128,.08), transparent 70%); }
+.score strong { font-family: var(--mono); font-size: clamp(48px, 6vw, 72px); font-weight: 600; letter-spacing: -.04em; line-height: 1; color: #fff; }
+.score strong i { font-style: normal; color: #5c7690; }
+.score span { font-size: 15px; color: var(--on-navy-2); }
+.score small { font-family: var(--mono); font-size: 12px; color: var(--on-navy-3); }
+.rel-sub { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 18px; }
+.rel-sub h3 { font-size: 20px; font-weight: 800; color: #fff; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--on-navy-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; }
+.seg-ok { background: #22c55e; }
+.seg-buf { background: #f59e0b; }
+.seg-file { background: repeating-linear-gradient(135deg, #60a5fa 0 4px, #3b82f6 4px 8px); }
+.ledger { list-style: none; margin: 0 0 56px; padding: 8px 0; border: 1px solid var(--navy-line); border-radius: 16px; background: var(--navy-2); }
+.ledger li { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) minmax(170px, 210px); gap: 8px 24px; align-items: center; padding: 16px 24px; }
+.ledger li + li { border-top: 1px solid var(--navy-line); }
+.ledger .phase { display: flex; flex-direction: column; gap: 2px; }
+.ledger .phase b { font-size: 16px; color: #fff; }
+.ledger .phase small { font-size: 13px; line-height: 1.6; color: var(--on-navy-3); }
+.ledger .no { font-family: var(--mono); font-size: 12px; color: var(--on-navy-3); }
+.bar { display: flex; height: 22px; border-radius: 5px; overflow: hidden; background: #0b1726; box-shadow: inset 0 0 0 1px var(--navy-line); }
+.bar span { display: block; height: 100%; }
+.bar span + span { box-shadow: inset 1px 0 0 rgba(13,27,42,.6); }
+.ledger .count { font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--on-navy-2); font-variant-numeric: tabular-nums; }
+.ledger .count b { color: #fff; font-weight: 600; }
+.ledger .event { display: inline-block; margin-top: 4px; padding: 0 6px; border-radius: 4px; font-size: 12px; line-height: 20px; }
+.ev-warn { color: var(--warn-d); background: rgba(251,191,36,.12); }
+.ev-error { color: var(--error-d); background: rgba(255,107,120,.12); }
+.ev-ok { color: var(--ok-d); background: rgba(74,222,128,.12); }
+.ledger li.done { background: rgba(34,197,94,.07); border-radius: 0 0 16px 16px; }
+.chain { list-style: none; margin: 0 0 56px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.chain li { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 20px 18px; border-radius: 14px; background: #13263a; border: 1px solid var(--navy-line); }
+.chain li:not(:last-child)::after { content: ""; position: absolute; top: 34px; right: -11px; width: 10px; height: 10px; border-top: 2px solid #5c7690; border-right: 2px solid #5c7690; transform: rotate(45deg); }
+.chain .icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: #fff; }
+.chain .where { font-family: var(--mono); font-size: 12px; color: var(--on-navy-3); }
+.chain strong { font-size: 17px; color: #fff; }
+.chain p { font-size: 13.5px; line-height: 1.7; color: var(--on-navy-2); }
+.chain .guards-against { margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--navy-line); font-size: 12.5px; color: var(--on-navy-3); }
+.chain .guards-against b { color: var(--on-navy); font-weight: 600; }
+.cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 0 40px; margin-bottom: 40px; border-top: 1px solid var(--navy-line); }
+.case { display: flex; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--navy-line); }
+.case svg { flex: none; margin-top: 3px; color: #22c55e; }
+.case b { display: block; font-size: 16px; color: #fff; margin-bottom: 2px; }
+.case span { font-size: 14px; line-height: 1.7; color: var(--on-navy-2); }
+@media (max-width: 900px) {
+  .chain { grid-template-columns: minmax(0, 1fr); }
+  .chain li:not(:last-child)::after { top: auto; bottom: -12px; right: auto; left: 34px; transform: rotate(135deg); }
+}
+@media (max-width: 760px) {
+  .ledger li { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 16px 18px; }
+}
+
+/* 首屏下方的数字条 */
+.proof { margin-top: 64px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.proof div { padding: 22px 20px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.proof div + div { padding-left: 20px; border-left: 1px solid var(--line); }
+.proof strong { font-size: clamp(26px, 3vw, 36px); font-weight: 900; letter-spacing: -.02em; line-height: 1.1; }
+.proof strong small { font-size: .55em; font-weight: 700; margin-left: 2px; }
+.proof span { font-size: 14px; color: var(--muted); }
+
+/* 功能总览 */
+.caps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 80px; }
+.cap { display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 14px; background: var(--paper); border: 1px solid var(--line); color: var(--ink); text-decoration: none; transition: border-color .15s, transform .15s; }
+.cap:hover { color: var(--ink); border-color: var(--accent); transform: translateY(-2px); }
+@media (prefers-reduced-motion: reduce) { .cap { transition: none; } .cap:hover { transform: none; } }
+.cap .ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; }
+.cap strong { font-size: 16px; }
+.cap span { font-size: 13.5px; line-height: 1.65; color: var(--muted); }
+.ic--blue { color: #1d4ed8; background: #e6edff; } .ic--teal { color: #0f766e; background: #dcf5f1; }
+.ic--amber { color: #b45309; background: #fdf0dc; } .ic--red { color: #c8102e; background: #fde6e9; }
+.ic--violet { color: #6d28d9; background: #efe7ff; } .ic--green { color: #15803d; background: #def5e5; }
+.ic--slate { color: #334155; background: #e7ecf2; } .ic--navy { color: #fff; background: var(--navy); }
+
+/* 主机监控卡片 */
+.host-card { display: flex; flex-direction: column; gap: 16px; }
+.host-card__head { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.host-card__head b { font-family: var(--mono); font-size: 15px; }
+.online { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ok); }
+.online::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+.host-card__head small { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.spark { width: 100%; height: 96px; display: block; }
+.spark-legend { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: -8px; }
+.procs { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.procs div { display: grid; grid-template-columns: 70px minmax(0, 1fr) 60px; gap: 10px; align-items: center; font-family: var(--mono); font-size: 12.5px; }
+.procs i { height: 6px; border-radius: 3px; background: #eef2f6; overflow: hidden; }
+.procs i b { display: block; height: 6px; background: var(--info); }
+.procs em { font-style: normal; text-align: right; color: var(--muted); }
+
+/* 备份生命周期 */
+.lifecycle { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.lifecycle li { padding: 14px 16px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.lifecycle b { font-size: 14px; }
+.lifecycle span { font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.lifecycle li:nth-child(1) { border-top: 3px solid #3b82f6; }
+.lifecycle li:nth-child(2) { border-top: 3px solid #f59e0b; }
+.lifecycle li:nth-child(3) { border-top: 3px solid #22c55e; }
+
+/* 三步上线与安全 */
+.launch { list-style: none; margin: 0 0 40px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; counter-reset: launch; }
+.launch li { position: relative; padding: 24px 24px 24px 72px; border-radius: 14px; background: var(--paper); display: flex; flex-direction: column; gap: 6px; }
+.launch li::before { counter-increment: launch; content: counter(launch); position: absolute; left: 24px; top: 22px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--navy); color: #fff; font-weight: 800; font-family: var(--mono); }
+.launch b { font-size: 17px; }
+.launch span { font-size: 14px; line-height: 1.7; color: var(--ink-2); }
+.launch code { font-family: var(--mono); font-size: 12.5px; padding: 1px 6px; border-radius: 4px; background: #eef2f6; }
+.secure { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0 0 40px; border-top: 1px solid #d3dae2; }
+.secure > div { display: flex; gap: 10px; padding: 18px 16px 0 0; }
+.secure svg { flex: none; margin-top: 3px; color: var(--ok); }
+.secure b { display: block; font-size: 15px; }
+.secure span { font-size: 13.5px; line-height: 1.65; color: var(--muted); }
+
+/* 常见问题 */
+.faq { display: flex; flex-direction: column; border-top: 1px solid var(--line); max-width: 920px; }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 4px; font-size: 18px; font-weight: 700; cursor: pointer; list-style: none; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 400; font-size: 20px; color: var(--accent); background: #e6edff; }
+.faq details[open] summary::after { content: "−"; }
+.faq p { padding: 0 4px 22px; font-size: 15.5px; line-height: 1.85; color: var(--ink-2); max-width: 760px; }
+.faq code { font-family: var(--mono); font-size: 13.5px; }
+
+/* 联系区要点 */
+.perks { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.perks li { display: flex; gap: 10px; align-items: baseline; font-size: 16px; }
+.perks svg { flex: none; color: var(--ok); transform: translateY(2px); }
+
+@media (max-width: 900px) {
+  .proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proof div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .caps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .launch, .lifecycle { grid-template-columns: minmax(0, 1fr); }
+  .secure { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .caps, .secure { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 部署 */
+.stack { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.stack div { background: var(--paper); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.stack strong { font-weight: 700; }
+.stack span { font-size: 13px; color: var(--muted); }
+
+/* 联系 */
+.contact .wrap { display: flex; flex-wrap: wrap; gap: 32px 64px; align-items: center; }
+.contact__text { flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.contact__text h2 { font-size: clamp(32px, 4vw, 52px); font-weight: 900; letter-spacing: -.03em; line-height: 1.15; }
+.form { flex: 1 1 400px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; }
+.form label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; }
+.form input { min-height: 44px; padding: 0 12px; border: 1px solid #c5ced8; border-radius: 8px; font: inherit; font-weight: 400; color: var(--ink); background: #fff; }
+.form__note { font-size: 13px; color: var(--muted); }
+.form__status { font-size: 14px; color: var(--ok); }
+.form__status[data-error] { color: var(--error); }
+
+.footer { padding: 28px max(24px, env(safe-area-inset-right, 0px)) 28px max(24px, env(safe-area-inset-left, 0px)); border-top: 1px solid var(--line); }
+.footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; font-size: 13px; color: var(--muted); }
+
+@media (max-width: 900px) {
+  .nav__links { order: 3; flex-basis: 100%; }
+  .nav .wrap { gap: 10px 12px; }
+  .brand { margin-right: auto; }
+}
+@media (max-width: 640px) {
+  .gh { padding: 0 12px; }
+  .gh__text { display: none; }
+  .band { padding-block: 64px; }
+  .hero { padding-top: 48px; }
+  .refs div em, .archive .size { display: none; }
+}
+
+/* ==========================================================================
+   Apple 风格层：克制的色彩、大字号与大留白、无边框的大圆角色块、
+   胶囊按钮、纯黑色带，以及滚动进入时的轻微位移。内容与布局不变。
+   ========================================================================== */
+:root {
+  --ground: #ffffff;
+  --paper: #f5f5f7;
+  --ink: #1d1d1f;
+  --ink-2: #424245;
+  --muted: #6e6e73;
+  --line: #d2d2d7;
+  --navy: #000000;
+  --navy-2: #1d1d1f;
+  --navy-3: #2a2a2d;
+  --navy-line: #333336;
+  --on-navy: #f5f5f7;
+  --on-navy-2: #a1a1a6;
+  --on-navy-3: #86868b;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --link: #0066cc;
+  --tile: #f5f5f7;
+  --tile-dark: #1d1d1f;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --ease-apple: cubic-bezier(.28, .11, .32, 1);
+}
+
+/* 字体与节奏 */
+body { background: var(--ground); color: var(--ink); font-size: 17px; line-height: 1.47; letter-spacing: -.012em; text-rendering: optimizeLegibility; }
+::selection { background: rgba(0,113,227,.2); }
+a { color: var(--link); }
+.band { padding-block: 128px; }
+.section-head { gap: 14px; margin-bottom: 64px; }
+.eyebrow { font-family: var(--sans); font-size: 17px; font-weight: 600; letter-spacing: 0; color: #bf4800; }
+.band--navy .eyebrow { color: #f56300; }
+.h2 { font-size: clamp(34px, 4.6vw, 56px); font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.lead { font-size: 21px; line-height: 1.52; letter-spacing: .004em; color: var(--muted); }
+.band--navy .lead { color: var(--on-navy-3); }
+.hero h1 { font-size: clamp(46px, 6.6vw, 86px); font-weight: 700; letter-spacing: -.025em; line-height: 1.06; }
+/* 首屏标题按所在文字栏的宽度定字号：「每一行日志，」6 个字始终排在一行，两行都不在中间断开 */
+.hero__text { container-type: inline-size; }
+.hero h1 span { white-space: nowrap; }
+@supports (font-size: 1cqi) {
+  .hero h1 { font-size: clamp(36px, 15.2cqi, 86px); }
+}
+.hero__lead { font-size: 21px; line-height: 1.52; color: var(--muted); }
+.feature__text h3 { font-size: clamp(26px, 2.6vw, 34px); font-weight: 700; letter-spacing: -.015em; line-height: 1.18; }
+.mono, code, pre { font-variant-ligatures: none; }
+.proof strong, .meter strong, .score strong, .ledger .count { font-variant-numeric: tabular-nums; }
+
+/* 顶栏：Apple 式半透明窄栏 */
+.nav { padding-top: 8px; padding-bottom: 8px; background: rgba(251,251,253,.8); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(0,0,0,.08); }
+.nav.is-scrolled { background: rgba(251,251,253,.86); }
+.brand span { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.nav__links { font-size: 13px; gap: 6px 30px; }
+.nav__links a { color: rgba(29,29,31,.8); transition: color .2s var(--ease-apple); }
+.nav__links a:hover { color: var(--ink); }
+.gh { min-height: 36px; padding: 0 14px; border: 0; border-radius: 980px; background: rgba(0,0,0,.05); font-size: 13px; font-weight: 500; }
+.gh:hover { background: rgba(0,0,0,.09); }
+
+/* 按钮：胶囊形 */
+.btn { min-height: 48px; padding: 0 26px; border-radius: 980px; font-size: 17px; font-weight: 500; letter-spacing: -.01em; transition: background-color .2s var(--ease-apple), color .2s var(--ease-apple), transform .2s var(--ease-apple); }
+.btn--small { min-height: 36px; padding: 0 16px; font-size: 13px; }
+.btn--primary { background: var(--accent); }
+.btn--primary:hover { background: var(--accent-hover); }
+.btn--ghost { border: 1px solid var(--accent); color: var(--accent); background: transparent; }
+.btn--ghost:hover { background: var(--accent); color: #fff; }
+.btn:active { transform: scale(.98); }
+.repo { color: var(--link); font-family: var(--sans); font-size: 15px; }
+.repo:hover { text-decoration: underline; }
+.platforms { color: var(--muted); }
+.pill { border: 0; background: var(--tile); font-family: var(--sans); font-size: 13px; color: var(--ink-2); }
+
+/* 首屏界面：做成 macOS 窗口 */
+.console, .terminal { position: relative; padding-top: 46px; border-radius: 18px; background: #1c1c1e; box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 30px 70px -20px rgba(0,0,0,.35); }
+.console::before, .terminal::before { content: ""; position: absolute; top: 17px; left: 18px; width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840; }
+.console::after, .terminal::after { content: ""; position: absolute; left: 0; right: 0; top: 40px; height: 1px; background: rgba(255,255,255,.06); }
+.terminal small { position: absolute; top: 14px; left: 0; right: 0; text-align: center; font-size: 12px; color: #8e8e93; }
+.console__query, .console__range { background: #2c2c2e; }
+.histogram { border-bottom-color: #2c2c2e; }
+.histogram b { background: #ff453a; }
+.histogram em { background: #0a84ff; opacity: .85; }
+.logline--error { background: rgba(255,69,58,.14); }
+.lv-info { color: #64d2ff; } .lv-warn { color: #ffd60a; } .lv-error { color: #ff6961; }
+.toast { border: 0; border-radius: 18px; background: rgba(255,255,255,.86); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); box-shadow: 0 20px 50px -18px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.05); }
+
+/* 首屏数字 */
+.proof { margin-top: 96px; border-top: 0; gap: 0; }
+.proof div { padding-top: 0; }
+.proof div + div { border-left: 1px solid var(--line); }
+.proof strong { font-size: clamp(34px, 4vw, 52px); font-weight: 700; letter-spacing: -.03em; }
+.proof span { font-size: 15px; color: var(--muted); }
+
+/* 浅色色块：无边框的大圆角灰块 */
+.card, .meter, .tile, .archive, .cap, .message, .lifecycle li { border: 0; border-radius: 22px; background: var(--tile); box-shadow: none; }
+.card, .tile { padding: 28px; }
+.code { background: #fff; border-radius: 14px; }
+.chip { background: #fff; border-radius: 980px; }
+.chip--error { background: #ffe5e3; }
+.caps { gap: 16px; }
+.cap { padding: 26px; transition: transform .4s var(--ease-apple); }
+.cap:hover { transform: scale(1.02); color: var(--ink); }
+.cap .ic { border-radius: 50%; }
+.meter i, .procs i { background: #e5e5ea; }
+.panel { border: 0; border-radius: 28px; background: var(--tile); box-shadow: none; }
+.panel .tile, .panel .message { background: #fff; }
+.archive { padding: 16px 20px; }
+/* 归档三步：去掉旧版的彩色上边框，改用标题前的小圆点 */
+.lifecycle li, .lifecycle li:nth-child(1), .lifecycle li:nth-child(2), .lifecycle li:nth-child(3) { border: 0; padding: 18px 20px; }
+.lifecycle li:nth-child(1) { --dot: #0a84ff; } .lifecycle li:nth-child(2) { --dot: #ff9f0a; } .lifecycle li:nth-child(3) { --dot: #30d158; }
+.lifecycle b { display: flex; align-items: center; gap: 8px; }
+.lifecycle b::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+.band--grey { background: var(--tile); }
+.band--grey .stack > div, .launch li { border: 0; border-radius: 22px; background: #fff; box-shadow: none; }
+.launch li::before { background: var(--ink); }
+.secure { border-top-color: var(--line); }
+.open { border-radius: 28px; background: #000; }
+.open .btn { background: #fff; color: #000; }
+.faq { border-top-color: var(--line); }
+.faq details { border-bottom-color: var(--line); }
+.faq summary { font-size: 21px; font-weight: 600; letter-spacing: -.015em; }
+.faq summary::after { background: var(--tile); color: var(--ink); }
+.faq p { font-size: 17px; color: var(--muted); }
+.form { border: 0; border-radius: 28px; background: var(--tile); box-shadow: none; }
+.form input { border: 1px solid #d2d2d7; border-radius: 12px; min-height: 48px; background: #fff; transition: border-color .2s var(--ease-apple), box-shadow .2s var(--ease-apple); }
+.form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0,113,227,.18); }
+.contact__text h2 { font-size: clamp(40px, 5.4vw, 72px); font-weight: 700; letter-spacing: -.025em; line-height: 1.07; }
+.perks li { font-size: 17px; }
+.perks svg, .secure svg { color: #30d158; }
+
+/* 黑色色带 */
+.band--navy { background: #000; }
+.band--navy .h2 { color: #f5f5f7; }
+#ai .h2 { background: linear-gradient(90deg, #b07cff 0%, #6e8bff 45%, #ff7ab6 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.flow li { border-top: 0; border-radius: 22px; background: var(--tile-dark); position: relative; overflow: hidden; }
+.flow li::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: #0a84ff; }
+.flow li.warn::before { background: #ff9f0a; } .flow li.ok::before { background: #30d158; } .flow li.ai::before { background: #bf5af2; }
+.ai-panel { border: 0; border-radius: 28px; background: var(--tile-dark); box-shadow: none; }
+.ai-badges span { border-color: #424245; color: #a1a1a6; border-radius: 980px; }
+.ask { background: #0a84ff; border-radius: 20px 20px 6px 20px; }
+.reply, .diag-summary, .src { background: #000; border-color: #2c2c2e; }
+.reply { border-radius: 6px 20px 20px 20px; }
+.ai-points { border-top-color: #333336; }
+.score { flex: 0 1 380px; min-width: 0; border: 0; border-radius: 28px; background: var(--tile-dark); }
+.score strong { font-size: clamp(40px, 4.2vw, 60px); letter-spacing: -.03em; white-space: nowrap; }
+.score strong { background: linear-gradient(180deg, #ffffff, #a1f0c0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ledger { border: 0; border-radius: 28px; background: var(--tile-dark); }
+.ledger li + li { border-top-color: #2c2c2e; }
+.ledger li.done { background: rgba(48,209,88,.08); border-radius: 0 0 28px 28px; }
+.bar { background: #000; box-shadow: none; border-radius: 980px; height: 18px; }
+.seg-ok { background: #30d158; } .seg-buf { background: #ff9f0a; }
+.chain li { border: 0; border-radius: 22px; background: var(--tile-dark); }
+.chain li:not(:last-child)::after { border-color: #48484a; }
+.chain .guards-against { border-top-color: #333336; }
+.case { border-bottom-color: #2c2c2e; }
+.cases { border-top-color: #2c2c2e; }
+
+/* 页脚 */
+.footer { background: var(--tile); border-top: 0; font-size: 12px; }
+.footer .wrap { font-size: 12px; color: var(--muted); }
+
+/* 滚动进入：从原位下方 32px 轻移到位（始终可见，不做淡入） */
+.reveal { transform: translateY(32px); transition: transform 1.1s var(--ease-apple); will-change: transform; }
+.reveal.is-in { transform: none; }
+
+@media (max-width: 640px) {
+  .band { padding-block: 80px; }
+  .lead, .hero__lead { font-size: 19px; }
+  .proof { margin-top: 64px; }
+  .faq summary { font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal.is-in { transform: none; transition: none; }
+  .cap:hover, .btn:active { transform: none; }
+}
+
+/* 归档列表：状态、大小不被长文件名挤压换行，文件名用省略号截断 */
+.archive .ok, .archive .back, .archive .size { flex: none; white-space: nowrap; }
+
+/* 手机适配：导航单行可横滑、触控区域不小于 40px、首屏数字 2×2 */
+@media (max-width: 640px) {
+  .nav { padding-bottom: 0; }
+  .nav .wrap { row-gap: 2px; }
+  .nav__links { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0 22px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  .nav__links::-webkit-scrollbar { display: none; }
+  .nav__links a { flex: none; display: flex; align-items: center; min-height: 40px; font-size: 14px; }
+  .gh, .btn--small { min-height: 40px; }
+  .hero .proof { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 0; }
+  .hero .proof div { padding: 0 12px 0 0; border-left: 0; }
+  .hero .proof div:nth-child(even) { padding-left: 18px; border-left: 1px solid var(--line); }
+  .proof strong { font-size: 34px; }
+  .footer a { display: inline-block; padding: 10px 0; }
+  .repo { padding-block: 10px; }
+  /* 点导航跳转时，区块小标题不被两行高的顶栏挡住 */
+  section[id] { scroll-margin-top: 40px; }
+}
+@media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
+  .reveal { transform: translateY(20px); }
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <nav class="wrap" aria-label="主导航">
+    <a class="brand" href="#top">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="3" rx="1.5" fill="#3B6FF0"/><rect x="2" y="12.5" width="16" height="3" rx="1.5" fill="#E08A00"/><rect x="2" y="20" width="10" height="3" rx="1.5" fill="#E5394B"/></svg>
+      <span>LoggingX</span>
+    </a>
+    <div class="nav__links">
+      <a href="#features">功能</a>
+      <a href="#ai">AI 运维</a>
+      <a href="#reliability">不丢日志</a>
+      <a href="#alerting">告警</a>
+      <a href="#deploy">私有部署</a>
+      <a href="#faq">常见问题</a>
+    </div>
+    <a class="gh" aria-label="GitHub 仓库" href="https://github.com/shanegaolab/loggingx" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.37-3.37-1.37-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.2 10.2 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg><span class="gh__text">GitHub</span></a>
+    <a class="btn btn--primary btn--small" href="#contact">预约演示</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <!-- 首屏 -->
+  <section class="band hero">
+    <div class="wrap">
+      <div class="hero__text">
+        <span class="pill"><i></i>私有部署的日志平台</span>
+        <h1><span>每一行日志，</span><br><span>都有着落。</span></h1>
+        <p class="hero__lead">LoggingX 把采集、存储、查询、告警和归档放进一套系统。服务器上装一个 Agent，日志就进来了；断网、宕机、重启，都不会丢。出了错，AI 会结合你的代码告诉你原因。</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#contact">预约演示</a>
+          <a class="btn btn--ghost" href="#ai">看看 AI 运维</a>
+        </div>
+        <a class="repo" href="https://github.com/shanegaolab/loggingx" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.37-3.37-1.37-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.2 10.2 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg>github.com/shanegaolab/loggingx</a>
+        <div class="platforms"><span>Linux</span><span>Windows</span><span>Docker</span><span>Kubernetes</span><span>HTTP / Kafka</span></div>
+      </div>
+      <div class="hero__visual" role="img" aria-label="日志查询界面示意：时间分布柱状图与按级别着色的日志行，一条 ERROR 日志触发了告警通知">
+        <div class="console">
+          <div class="console__bar">
+            <div class="console__query">order-service · level:ERROR,WARN · "timeout"</div>
+            <span class="console__range">最近 1 小时</span>
+          </div>
+          <div class="histogram" id="histogram" aria-hidden="true"></div>
+          <div class="loglines" aria-hidden="true">
+            <div class="logline"><span class="t">14:02:09</span><span class="l lv-info">INFO</span><span class="m">POST /api/orders 201 38ms user=10233</span></div>
+            <div class="logline"><span class="t">14:02:10</span><span class="l lv-warn">WARN</span><span class="m">HikariPool-1 - connection pool 92% in use</span></div>
+            <div class="logline"><span class="t">14:02:10</span><span class="l lv-info">INFO</span><span class="m">POST /api/orders 201 41ms user=10871</span></div>
+            <div class="logline logline--error"><span class="t">14:02:11</span><span class="l lv-error">ERROR</span><span class="m">PaymentClient - payment gateway timeout after 3000ms</span></div>
+            <div class="logline logline--error"><span class="t">14:02:11</span><span class="l lv-error">ERROR</span><span class="m">OrderService - submit failed, order=OD20261028140211</span></div>
+            <div class="logline"><span class="t">14:02:12</span><span class="l lv-warn">WARN</span><span class="m">retrying payment, attempt 2/3</span></div>
+            <div class="logline"><span class="t">14:02:12</span><span class="l lv-info">INFO</span><span class="m">GET /api/orders/OD2026…0211 200 12ms</span></div>
+          </div>
+        </div>
+        <div class="toast">
+          <div class="toast__kind">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>
+            严重 · 日志告警
+          </div>
+          <strong>下单超时激增</strong>
+          <p>最近 5 分钟匹配日志 32 条（阈值 10 条）<br>已通知「订单值班」· 邮件 + 短信</p>
+        </div>
+      </div>
+    </div>
+    <div class="wrap proof" aria-label="LoggingX 一览">
+      <div><strong>5500<small>/5500</small></strong><span>断网、崩溃实测，一行不少</span></div>
+      <div><strong>1<small> 条命令</small></strong><span>装好 Agent，配置远程下发</span></div>
+      <div><strong>4<small> 种环境</small></strong><span>Linux · Windows · Docker · K8s</span></div>
+      <div><strong>3<small> 家模型</small></strong><span>DeepSeek · OpenAI · Claude</span></div>
+    </div>
+  </section>
+
+  <!-- 数据流 -->
+  <section class="band band--navy" aria-labelledby="flow-title">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">一行日志的路径</div>
+        <h2 class="h2" id="flow-title">从写进文件，到找到原因</h2>
+      </div>
+      <ol class="flow">
+        <li><span class="n">01 采集</span><span class="h">Agent 读文件与容器输出</span><span class="d">多行堆栈合并为一条，识别级别、时间与 TraceId</span></li>
+        <li><span class="n">02 传输</span><span class="h">HTTP 或 Kafka 批量上报</span><span class="d">断网先存本地磁盘，恢复后补发</span></li>
+        <li><span class="n">03 存储</span><span class="h">ClickHouse 列式存储</span><span class="d">按日志库设置保留天数，到期自动清理</span></li>
+        <li class="warn"><span class="n">04 查询与告警</span><span class="h">秒级检索，异常即通知</span><span class="d">关键字、级别、主机组合查询；邮件和短信告警</span></li>
+        <li class="ai"><span class="n">05 AI 分析</span><span class="h">结合代码找原因</span><span class="d">给出根本原因、修改建议和代码 diff</span></li>
+        <li class="ok"><span class="n">06 归档</span><span class="h">压缩后存入对象存储</span><span class="d">先归档再删除，需要时恢复回来查</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 功能 -->
+  <section class="band" id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">功能</div>
+        <h2 class="h2" id="features-title">运维需要的，都在一个界面里</h2>
+        <p class="lead">从日志进来，到找到原因、通知到人、归档留存，一套系统走完，不用在几个工具之间来回切。</p>
+      </div>
+      <div class="caps">
+        <a class="cap" href="#f-agent"><span class="ic ic--blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg></span><strong>日志采集</strong><span>一条命令安装，配置在页面上改</span></a>
+        <a class="cap" href="#f-query"><span class="ic ic--teal"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span><strong>查询与实时日志</strong><span>组合筛选、时间分布、实时滚动</span></a>
+        <a class="cap" href="#f-host"><span class="ic ic--slate"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span><strong>主机监控</strong><span>资源、进程、容器，和日志互通</span></a>
+        <a class="cap" href="#alerting"><span class="ic ic--red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/></svg></span><strong>告警中心</strong><span>日志与监控告警，邮件、短信通知</span></a>
+        <a class="cap" href="#ai"><span class="ic ic--violet"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 13h.01M15 13h.01"/></svg></span><strong>AI 运维</strong><span>智能问答、结合代码诊断错误</span></a>
+        <a class="cap" href="#backup"><span class="ic ic--amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10h14V9M10 13h4"/></svg></span><strong>备份归档</strong><span>按天压缩到对象存储，随时恢复</span></a>
+        <a class="cap" href="#reliability"><span class="ic ic--green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span><strong>不丢日志</strong><span>磁盘缓冲、断点续传、重试去重</span></a>
+        <a class="cap" href="#deploy"><span class="ic ic--navy"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><strong>权限与安全</strong><span>私有部署，按角色分配日志库</span></a>
+      </div>
+      <div class="features">
+        <div class="feature" id="f-agent">
+          <div class="feature__text">
+            <h3>一条命令装好 Agent</h3>
+            <p class="lead">在「采集 Agent」页面选平台，复制安装命令到服务器执行。之后改采集路径、多行规则、传输方式，都在页面上保存，Agent 每 30 秒同步一次，不用再登录服务器。</p>
+            <ul class="ticks">
+              <li>Linux systemd、Windows 计划任务、Docker、Kubernetes DaemonSet</li>
+              <li>Java、Python 异常堆栈自动合并为一条日志</li>
+              <li>每台主机的在线状态、版本、配置是否最新，一目了然</li>
+            </ul>
+          </div>
+          <div class="feature__visual terminal">
+            <small>服务器终端</small>
+<pre>$ curl -fsSL [安装链接] | sudo sh
+<span class="c">安装 LoggingX Agent（日志库：订单服务）</span>
+<span class="ok">✓</span> 已下载采集器
+<span class="ok">✓</span> 已登记到 LoggingX：web-01
+<span class="ok">✓</span> 已启动，正在采集 /var/log/order/*.log*</pre>
+          </div>
+        </div>
+
+        <div class="feature feature--reverse" id="f-query">
+          <div class="feature__visual card">
+            <div class="chips">
+              <span class="chip">关键字：payment</span>
+              <span class="chip chip--error">ERROR</span>
+              <span class="chip">主机：order-2</span>
+              <span class="chip">TraceId：9f3a…c21</span>
+            </div>
+<pre class="code">14:02:11.408 ERROR PaymentClient - payment gateway timeout
+  at com.shop.pay.PaymentClient.charge(PaymentClient.java:88)
+  at com.shop.order.OrderService.submit(OrderService.java:142)
+Caused by: java.net.SocketTimeoutException: Read timed out</pre>
+            <p class="caption">堆栈作为一条日志展示，可直接跳到这台主机的资源监控，或交给 AI 分析</p>
+          </div>
+          <div class="feature__text">
+            <h3>查得到，也跟得上</h3>
+            <p class="lead">按关键字、级别、主机、TraceId 组合筛选，柱状图看出异常在哪一分钟冒头。实时日志页像 <span class="mono">tail -f</span> 一样滚动，排查线上问题时不用开十个终端。</p>
+          </div>
+        </div>
+
+        <div class="feature" id="f-host">
+          <div class="feature__text">
+            <h3>日志旁边，就是主机的状态</h3>
+            <p class="lead">同一个 Agent 顺带采集 CPU、内存、磁盘、网络、负载，以及最耗资源的进程和容器。看到报错时，切过去就知道是不是机器扛不住了。</p>
+          </div>
+          <div class="feature__visual host-card">
+            <div class="card">
+              <div class="host-card__head"><b>order-1</b><span class="online">在线</span><small>CPU · 最近 1 小时</small></div>
+              <svg class="spark" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="CPU 使用率曲线：14:00 前后升到 92%">
+                <line x1="0" y1="16" x2="320" y2="16" stroke="#c8102e" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/>
+                <path d="M0 70 L20 68 L40 72 L60 66 L80 69 L100 64 L120 67 L140 62 L160 58 L180 50 L200 34 L215 14 L230 10 L245 18 L260 40 L280 56 L300 60 L320 62 L320 96 L0 96 Z" fill="#1d4ed8" opacity=".12"/>
+                <path d="M0 70 L20 68 L40 72 L60 66 L80 69 L100 64 L120 67 L140 62 L160 58 L180 50 L200 34 L215 14 L230 10 L245 18 L260 40 L280 56 L300 60 L320 62" fill="none" stroke="#1d4ed8" stroke-width="2"/>
+                <circle cx="230" cy="10" r="4" fill="#c8102e"/>
+              </svg>
+              <div class="spark-legend"><span>13:10</span><span>阈值 90%</span><span>14:10</span></div>
+            </div>
+            <div class="meters">
+              <div class="meter"><span>CPU</span><strong>92.4%</strong><i><b style="width:92%;background:var(--error)"></b></i></div>
+              <div class="meter"><span>内存</span><strong>61.0%</strong><i><b style="width:61%;background:var(--info)"></b></i></div>
+              <div class="meter"><span>磁盘 /data</span><strong>78.5%</strong><i><b style="width:78%;background:var(--warn)"></b></i></div>
+            </div>
+            <div class="card procs" aria-label="进程 Top">
+              <div><span>java</span><i><b style="width:91%"></b></i><em>182%</em></div>
+              <div><span>nginx</span><i><b style="width:12%"></b></i><em>24%</em></div>
+              <div><span>vector</span><i><b style="width:3%"></b></i><em>6%</em></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AI 运维 -->
+  <section class="band band--navy" id="ai" aria-labelledby="ai-title">
+    <div class="wrap">
+      <div class="ai-intro">
+        <div class="section-head">
+          <div class="eyebrow">AI 运维</div>
+          <h2 class="h2" id="ai-title">问它为什么报错，<br>它去翻日志、翻代码</h2>
+          <p class="lead">智能问答把知识库、历史诊断、告警、错误日志和代码一起检索出来再回答，每句话都标出处；AI 诊断在新错误出现时自动结合 Git 仓库里的源代码，给出原因和可以直接评审的修改。</p>
+        </div>
+        <div class="ai-badges" aria-label="支持的模型">
+          <span>DeepSeek</span><span>OpenAI</span><span>Anthropic Claude</span><span>可接公司内部模型网关</span>
+        </div>
+      </div>
+
+      <div class="ai-grid">
+        <!-- 智能问答 -->
+        <article class="ai-panel" aria-labelledby="ai-chat-title">
+          <div class="ai-panel__head"><h3 id="ai-chat-title">智能问答</h3><span class="ai-tag">RAG · 有出处</span></div>
+          <p>用大白话问，AI 先把相关的手册、诊断、告警和日志找出来再回答，每个结论都能点开出处核对，还会告诉你下一步查哪里。</p>
+          <div class="ask">订单服务最近一小时为什么一直报错？</div>
+          <div class="reply">
+            <div><strong>结论：</strong>主要是库存扣减为负导致下单失败，集中在 order-1，最近 1 小时 214 条<span class="cite">[1]</span>。</div>
+            <ol>
+              <li>错误为 <span class="mono">IllegalStateException: stock is negative</span>，出自 <span class="mono">OrderService.reserve</span><span class="cite">[3]</span></li>
+              <li>上周同类问题的诊断：扣减前没有校验库存，已标记处理<span class="cite">[2]</span></li>
+              <li>处理手册建议先回滚受影响订单，再补库存校验<span class="cite">[4]</span></li>
+            </ol>
+            <div class="refs" aria-label="参考资料">
+              <div><b>[1]</b><em class="k-log">统计</em><span>订单服务：214 条 ERROR/FATAL</span></div>
+              <div><b>[2]</b><em class="k-ai">AI 诊断</em><span>IllegalStateException · 库存扣减前没有检查剩余数量</span></div>
+              <div><b>[3]</b><em class="k-log">日志</em><span>ERROR · order-1 · stock is negative for sku 1029</span></div>
+              <div><b>[4]</b><em class="k-kb">知识库</em><span>《订单服务库存为负的处理手册》</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- AI 诊断 -->
+        <article class="ai-panel" aria-labelledby="ai-diag-title">
+          <div class="ai-panel__head"><h3 id="ai-diag-title">AI 诊断</h3><span class="ai-tag">结合 Git 代码库</span></div>
+          <p>新类型的错误第一次出现、日志告警触发，或在日志查询里点一下，就会按堆栈找到出错的源文件一起分析。</p>
+          <div class="diag-summary">
+            <small>java.lang.IllegalStateException · 新错误 · 订单服务</small>
+            <strong>库存扣减前没有检查剩余数量</strong>
+            <span class="conf">把握较大</span>
+          </div>
+          <div class="src__title">src/main/java/com/shop/OrderService.java · 提交 3f9c2a1</div>
+<pre class="src" aria-label="相关代码"><span><span class="no">  5</span>public void reserve(String sku, int quantity) {</span><span class="focus"><span class="no">  6</span>    stock = stock - quantity;</span><span><span class="no">  7</span>    if (stock &lt; 0) throw new IllegalStateException(...);</span></pre>
+<pre class="src" aria-label="建议的修改"><span class="hunk">@@ -5,3 +5,4 @@</span><span>  public void reserve(String sku, int quantity) {</span><span class="add">+     if (stock &lt; quantity) throw new OutOfStockException(sku);</span><span>      stock = stock - quantity;</span><span class="del">-     if (stock &lt; 0) throw new IllegalStateException(...);</span></pre>
+        </article>
+      </div>
+
+      <div class="ai-points">
+        <div><strong>新错误自动分析</strong><span>按异常类型和出错方法归类，同类错误只分析一次</span></div>
+        <div><strong>知识库越用越准</strong><span>运维手册、故障复盘导入后可被检索引用；处理过的诊断自动成为经验</span></div>
+        <div><strong>提醒到人</strong><span>分析完成后顶栏提醒，并按通知组发邮件、短信</span></div>
+        <div><strong>成本可控</strong><span>自动分析每天有上限；令牌加密保存，权限按日志库隔离</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 告警 -->
+  <section class="band" id="alerting" aria-labelledby="alerting-title">
+    <div class="wrap panel">
+      <div class="panel__head">
+        <div>
+          <div class="eyebrow">告警中心</div>
+          <h2 class="h2" id="alerting-title">出事的时候，该知道的人先知道</h2>
+        </div>
+        <p class="lead">日志告警和监控告警分开设置，通知走邮件或短信。按通知组发给值班同事，恢复时再告诉一声，没恢复就按间隔提醒。</p>
+      </div>
+      <div class="tiles">
+        <div class="tile"><strong>日志告警</strong><p>5 分钟内 ERROR 超过 10 条，或出现「OutOfMemoryError」，即刻触发</p><small>级别数量 · 关键字匹配 · 限定主机</small></div>
+        <div class="tile"><strong>监控告警</strong><p>CPU、内存持续过高，磁盘快满，负载异常，或者 Agent 离线</p><small>阈值 · 持续时间 · 适用日志库</small></div>
+        <div class="tile"><strong>邮件与短信</strong><p>SMTP 邮件；短信支持阿里云和腾讯云，页面里填好签名模板，先发一条测试</p><small>通知组 · 恢复通知 · 重复提醒 · 发送记录</small></div>
+      </div>
+      <div class="messages">
+        <div class="message"><small>短信 · 10:42</small><span>【LoggingX】【严重】主机离线：web-03（订单服务） 告警，12分钟未上报</span></div>
+        <div class="message"><small>邮件 · 10:57</small><span><b style="color:var(--ok)">已恢复</b> · 主机离线 - web-03（订单服务），持续 15 分钟</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 备份 -->
+  <section class="band" id="backup" style="padding-top:0" aria-labelledby="backup-title">
+    <div class="wrap feature">
+      <div class="feature__text">
+        <div class="eyebrow">备份管理</div>
+        <h2 class="h2" id="backup-title">旧日志不占库，要查还能找回</h2>
+        <p class="lead">超过设定天数的日志，每天按天压缩后存进 S3 兼容对象存储：MinIO、阿里云 OSS、腾讯云 COS 或 AWS S3。每一天都先归档成功，再从库里清理。审计要翻半年前的记录，下载归档或一键恢复回日志库。</p>
+      </div>
+      <div class="feature__visual archives">
+        <ol class="lifecycle" aria-label="日志的一生">
+          <li><b>实时入库</b><span>保留期内随时查询、告警</span></li>
+          <li><b>按天压缩归档</b><span>到期前自动存进对象存储</span></li>
+          <li><b>长期留存</b><span>随时下载，或恢复回日志库查询</span></li>
+        </ol>
+        <div class="archive"><span class="name">order-service/2026-04-12.ndjson.gz</span><span class="size">38.2 MB</span><span class="ok">已归档</span></div>
+        <div class="archive"><span class="name">order-service/2026-04-11.ndjson.gz</span><span class="size">41.7 MB</span><span class="back">已恢复查询</span></div>
+        <div class="archive"><span class="name">order-service/2026-04-10.ndjson.gz</span><span class="size">36.9 MB</span><span class="ok">已归档</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 可靠性 -->
+  <section class="band band--navy" id="reliability" aria-labelledby="rel-title">
+    <div class="wrap">
+      <div class="rel-head">
+        <div class="section-head">
+          <div class="eyebrow">采集可靠性</div>
+          <h2 class="h2" id="rel-title">断网、宕机、重启，<br>日志接着传</h2>
+          <p class="lead">只要日志写进了文件，Agent 就会把它送到 LoggingX。断网、崩溃、重启、日志轮转，一行都不会少。下面是我们实际折腾一遍的结果。</p>
+        </div>
+        <div class="score">
+          <strong>5500<i>/</i>5500</strong>
+          <span>行全部送达，重复 0 行</span>
+          <small>实测 · 2026-10-27 · Vector 0.58 · Windows</small>
+        </div>
+      </div>
+
+      <div class="rel-sub">
+        <h3>一次实测：每一步日志都在哪</h3>
+        <div class="legend" aria-hidden="true">
+          <span><i class="seg-ok"></i>已入库</span>
+          <span><i class="seg-buf"></i>Agent 磁盘缓冲</span>
+          <span><i class="seg-file"></i>还在日志文件里</span>
+        </div>
+      </div>
+      <ol class="ledger">
+        <li>
+          <div class="phase"><span class="no">01</span><b>正常采集</b><small>写入 1500 行</small></div>
+          <div class="bar" role="img" aria-label="已入库 1500 行"><span class="seg-ok" style="width:27.27%"></span></div>
+          <div class="count"><b>1500</b> 已入库</div>
+        </li>
+        <li>
+          <div class="phase"><span class="no">02</span><b>断网</b><small>LoggingX 不可达，又写入 2500 行</small></div>
+          <div class="bar" role="img" aria-label="已入库 1500 行，磁盘缓冲 2500 行"><span class="seg-ok" style="width:27.27%"></span><span class="seg-buf" style="width:45.45%"></span></div>
+          <div class="count"><b>2500</b> 存进磁盘缓冲<br><span class="event ev-warn">一直重试</span></div>
+        </li>
+        <li>
+          <div class="phase"><span class="no">03</span><b>强制结束 Agent</b><small>直接杀掉进程，模拟崩溃</small></div>
+          <div class="bar" role="img" aria-label="已入库 1500 行，磁盘缓冲 2500 行完好"><span class="seg-ok" style="width:27.27%"></span><span class="seg-buf" style="width:45.45%"></span></div>
+          <div class="count">缓冲和读取位置都在磁盘上<br><span class="event ev-error">进程已退出</span></div>
+        </li>
+        <li>
+          <div class="phase"><span class="no">04</span><b>停机期间日志轮转</b><small>旧文件再写 500 行后改名为 app.log.1，新的 app.log 写 1000 行</small></div>
+          <div class="bar" role="img" aria-label="已入库 1500 行，磁盘缓冲 2500 行，日志文件中 1500 行待读"><span class="seg-ok" style="width:27.27%"></span><span class="seg-buf" style="width:45.45%"></span><span class="seg-file" style="width:27.27%"></span></div>
+          <div class="count"><b>1500</b> 还在文件里等着<br><span class="event ev-error">Agent 未运行</span></div>
+        </li>
+        <li class="done">
+          <div class="phase"><span class="no">05</span><b>恢复网络、启动 Agent</b><small>补发缓冲，接着读两个文件</small></div>
+          <div class="bar" role="img" aria-label="已入库 5500 行"><span class="seg-ok" style="width:100%"></span></div>
+          <div class="count"><b>5500</b> 全部入库<br><span class="event ev-ok">重复 0 行</span></div>
+        </li>
+      </ol>
+
+      <div class="rel-sub"><h3>一行日志经过的五个环节，各管一种故障</h3></div>
+      <ol class="chain">
+        <li>
+          <span class="icon" style="background:#1d4ed8" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg></span>
+          <span class="where">app.log*</span>
+          <strong>日志文件</strong>
+          <p>Agent 不在时，应用照常往文件里写；停机期间轮转出的新文件从头读。</p>
+          <div class="guards-against">管：<b>Agent 停机、升级</b></div>
+        </li>
+        <li>
+          <span class="icon" style="background:#0e7490" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18l6-4 6 4V3z"/></svg></span>
+          <span class="where">数据目录</span>
+          <strong>读取位置</strong>
+          <p>日志确认存进缓冲后，读取位置才往前走；重启后从这里接着读。</p>
+          <div class="guards-against">管：<b>崩溃、断电重启</b></div>
+        </li>
+        <li>
+          <span class="icon" style="background:#b45309" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span>
+          <span class="where">1 GiB / 每台主机</span>
+          <strong>磁盘缓冲</strong>
+          <p>连不上 LoggingX 时先存在本机；满了就暂停读取，不丢弃任何一行。</p>
+          <div class="guards-against">管：<b>断网、LoggingX 宕机</b></div>
+        </li>
+        <li>
+          <span class="icon" style="background:#7c3aed" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+          <span class="where">退避最长 60 秒</span>
+          <strong>失败重试</strong>
+          <p>网络错误、超时、服务端 5xx 都会一直重试，直到成功。</p>
+          <div class="guards-against">管：<b>网络抖动、服务重启</b></div>
+        </li>
+        <li>
+          <span class="icon" style="background:#15803d" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <span class="where">服务端 · 30 分钟内</span>
+          <strong>按批次去重</strong>
+          <p>日志已入库、只是回复丢了时，重发的同一批会被认出来，不存两遍。</p>
+          <div class="guards-against">管：<b>重试造成的重复</b></div>
+        </li>
+      </ol>
+
+      <div class="rel-sub"><h3>遇到这些情况时</h3></div>
+      <div class="cases">
+        <div class="case"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>LoggingX 升级、重启</b><span>Agent 在本地缓冲并重试，恢复后按顺序补发</span></div></div>
+        <div class="case"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>机房断网几个小时</b><span>缓冲满了就暂停读取，日志留在文件里等网络恢复</span></div></div>
+        <div class="case"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>服务器重启、意外断电</b><span>读取位置和缓冲都在磁盘上，开机后从断点继续</span></div></div>
+        <div class="case"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>Agent 停机时日志轮转</b><span>新文件从头读，旧文件把剩下的部分读完</span></div></div>
+        <div class="case"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>请求超时后重发</b><span>同一批日志只入库一次</span></div></div>
+        <div class="case"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>Docker、Kubernetes 重建容器</b><span>数据目录挂在宿主机上，缓冲和读取位置都保留</span></div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 部署 -->
+  <section class="band band--grey" id="deploy" aria-labelledby="deploy-title">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">私有部署</div>
+        <h2 class="h2" id="deploy-title">装在你自己的机房，日志不出内网</h2>
+        <p class="lead">用的都是团队熟悉的组件。账号、角色、菜单权限、部门岗位都在系统管理里配置，谁能看哪些日志库、谁能改告警，按角色分配。</p>
+      </div>
+      <ol class="launch" aria-label="三步上线">
+        <li><b>启动 LoggingX</b><span>单个 jar 或部署到 Tomcat，连接 MySQL、ClickHouse 和 Redis</span></li>
+        <li><b>创建日志库</b><span>按业务划分，每个日志库单独设置保留天数和归档</span></li>
+        <li><b>安装 Agent</b><span>页面上复制一条命令到服务器执行，装好即开始采集</span></li>
+      </ol>
+      <div class="secure">
+        <div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>数据不出内网</b><span>日志、配置和账号都在你自己的服务器上</span></div></div>
+        <div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>按角色分配日志库</b><span>每个团队只看到自己的日志、主机和告警</span></div></div>
+        <div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>密钥加密保存</b><span>邮箱密码、短信与代码仓库令牌加密存储</span></div></div>
+        <div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div><b>登录防护</b><span>连续输错密码自动锁定，防止暴力破解</span></div></div>
+      </div>
+      <div class="stack">
+        <div><strong>Spring Boot 4</strong><span>后端服务，单 jar 或 Tomcat</span></div>
+        <div><strong>ClickHouse</strong><span>日志与主机指标</span></div>
+        <div><strong>MySQL</strong><span>配置、账号与告警</span></div>
+        <div><strong>Redis</strong><span>登录保护与多实例共享</span></div>
+        <div><strong>Vector</strong><span>采集 Agent 内核</span></div>
+        <div><strong>Vue 3</strong><span>管理界面，支持深色模式</span></div>
+      </div>
+      <div class="open">
+        <div>
+          <strong>源码在 GitHub 上</strong>
+          <p>部署文档、更新记录和问题反馈都在仓库里，欢迎 Star 和提 Issue。</p>
+        </div>
+        <a class="btn" href="https://github.com/shanegaolab/loggingx" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.37-3.37-1.37-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.2 10.2 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg>&nbsp;shanegaolab/loggingx</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 常见问题 -->
+  <section class="band" id="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">常见问题</div>
+        <h2 class="h2" id="faq-title">上线前大家常问的</h2>
+      </div>
+      <div class="faq">
+        <details open>
+          <summary>需要改业务代码吗？</summary>
+          <p>不需要。Agent 直接读取服务器上的日志文件和容器输出，Java、Python 的异常堆栈会自动合并成一条。已有的采集器（如 Fluent Bit）也可以直接把日志上报到 LoggingX 的 HTTP 接口，或者走 Kafka。</p>
+        </details>
+        <details>
+          <summary>支持哪些服务器环境？</summary>
+          <p>Linux（systemd）、Windows（计划任务）、Docker 和 Kubernetes（DaemonSet）都有现成的安装方式。内网环境可以把安装包放到内网镜像，Agent 从内网下载安装。</p>
+        </details>
+        <details>
+          <summary>日志能存多久？</summary>
+          <p>每个日志库单独设置保留天数。开启归档后，更早的日志按天压缩存进 MinIO、阿里云 OSS、腾讯云 COS 或 AWS S3，需要时下载，或一键恢复回日志库查询。</p>
+        </details>
+        <details>
+          <summary>AI 用的是哪家模型？代码会发到哪里？</summary>
+          <p>支持 DeepSeek、OpenAI 和 Anthropic Claude，在页面上选择即可，也可以指向公司内部的模型网关。分析用到的日志和代码片段只发给你选择的模型，代码仓库的访问令牌加密保存。</p>
+        </details>
+        <details>
+          <summary>不同团队能分开管理吗？</summary>
+          <p>可以。在角色上分配可访问的日志库，各团队只看到自己的日志、主机、告警和 AI 诊断；菜单和操作权限也按角色配置。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 联系 -->
+  <section class="band contact" id="contact" aria-labelledby="contact-title">
+    <div class="wrap">
+      <div class="contact__text">
+        <h2 id="contact-title">拿你自己的日志，<br>试一下。</h2>
+        <p class="lead">我们帮你在测试环境装好，接入一两台真实服务器，跑一周再决定。</p>
+        <ul class="perks">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>协助在你的测试环境完成部署</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>接入你的真实服务器，告警按你的规则配置</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>用你自己的日志演示 AI 智能问答和诊断</li>
+        </ul>
+      </div>
+      <!-- 把表单的 data-endpoint 改成你的表单接收地址（接收 JSON：name、company、phone）后即可提交 -->
+      <form class="form" id="demo-form" data-endpoint="" novalidate aria-label="预约演示">
+        <label for="f-name">称呼<input id="f-name" name="name" type="text" autocomplete="name" placeholder="张工" required></label>
+        <label for="f-company">公司<input id="f-company" name="company" type="text" autocomplete="organization" placeholder="公司名称"></label>
+        <label for="f-phone">手机号<input id="f-phone" name="phone" type="tel" autocomplete="tel" placeholder="138 0000 0000" required></label>
+        <button class="btn btn--primary" type="submit">提交预约</button>
+        <p class="form__status" id="form-status" role="status" aria-live="polite"></p>
+        <p class="form__note">或联系 [销售邮箱] · [联系电话]，也可以在 <a href="https://github.com/shanegaolab/loggingx/issues" target="_blank" rel="noopener noreferrer">GitHub Issues</a> 留言</p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>© 2026 LoggingX · [公司名称] · <a href="https://loggingx.com">loggingx.com</a></span>
+    <span><a href="https://github.com/shanegaolab/loggingx" target="_blank" rel="noopener noreferrer">GitHub</a> · [备案号]</span>
+  </div>
+</footer>
+
+<script>
+  // 顶栏：页面滚动后加深背景与阴影
+  (function () {
+    var nav = document.querySelector(".nav");
+    var update = function () { nav.classList.toggle("is-scrolled", window.scrollY > 8); };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  })();
+
+  // 滚动进入：内容一直可见，进入视口时从下方轻移到位。
+  // 区块从屏幕下方离开视口（往回滚到上面）时复位，再次滚下来时重新播放；在上方离开的保持原位
+  (function () {
+    if (!("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var items = document.querySelectorAll(".section-head, .rel-head, .proof, .caps, .feature, .flow, .ai-grid, .ai-points, .panel, .ledger, .chain, .cases, .launch, .secure, .stack, .open, .faq, .contact .wrap > *");
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) entry.target.classList.add("is-in");
+      });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    // 复位放在滚动监听里：按 Home、点导航等直接跳转时，区块从视口上方直接到下方，观察器不会通知
+    var ticking = false;
+    window.addEventListener("scroll", function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () {
+        ticking = false;
+        var bottom = window.innerHeight;
+        document.querySelectorAll(".reveal.is-in").forEach(function (item) {
+          if (item.getBoundingClientRect().top > bottom) item.classList.remove("is-in");
+        });
+      });
+    }, { passive: true });
+    items.forEach(function (item) {
+      var top = item.getBoundingClientRect().top;
+      if (top < window.innerHeight) return; // 首屏已在视口内的不动
+      item.classList.add("reveal");
+      observer.observe(item);
+    });
+  })();
+
+  // 首屏柱状图：蓝色为全部日志，红色为错误
+  (function () {
+    var heights = [18, 22, 20, 26, 24, 30, 28, 25, 22, 27, 33, 31, 29, 35, 38, 34, 30, 28, 26, 31, 36, 40, 44, 58, 72, 80, 66, 50, 41, 37, 33, 30, 28, 32, 29, 27];
+    var errors = [0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 2, 1, 0, 1, 0, 1, 2, 3, 6, 18, 30, 34, 22, 9, 4, 2, 1, 1, 0, 1, 0, 1];
+    var box = document.getElementById('histogram');
+    heights.forEach(function (h, i) {
+      var bar = document.createElement('span');
+      var err = document.createElement('b');
+      var ok = document.createElement('em');
+      err.style.height = errors[i] + 'px';
+      ok.style.height = (h - errors[i]) + 'px';
+      bar.appendChild(err);
+      bar.appendChild(ok);
+      box.appendChild(bar);
+    });
+  })();
+
+  // 预约表单：配置了 data-endpoint 时以 JSON 提交，否则提示联系方式
+  (function () {
+    var form = document.getElementById('demo-form');
+    var status = document.getElementById('form-status');
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      status.removeAttribute('data-error');
+      var data = { name: form.name.value.trim(), company: form.company.value.trim(), phone: form.phone.value.trim() };
+      if (!data.name || !/^\+?[\d\s-]{6,20}$/.test(data.phone)) {
+        status.setAttribute('data-error', '');
+        status.textContent = '请填写称呼和有效的手机号。';
+        return;
+      }
+      var endpoint = form.getAttribute('data-endpoint');
+      if (!endpoint) {
+        status.setAttribute('data-error', '');
+        status.textContent = '在线预约暂未开通，请通过下方的邮箱或电话联系我们。';
+        return;
+      }
+      status.textContent = '正在提交…';
+      fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.status);
+          status.textContent = '已收到，我们会在一个工作日内联系你。';
+          form.reset();
+        })
+        .catch(function () {
+          status.setAttribute('data-error', '');
+          status.textContent = '提交失败，请稍后再试，或通过邮箱、电话联系我们。';
+        });
+    });
+  })();
+</script>
+</body>
+</html>

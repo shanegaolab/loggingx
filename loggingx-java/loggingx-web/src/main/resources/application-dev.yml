@@ -1,0 +1,5 @@
+# Local development only: seeds demo accounts (see DemoDataInitializer).
+loggingx:
+  security:
+    jwt:
+      secret: ${LOGGINGX_JWT_SECRET:local-development-jwt-secret-change-before-production-0123456789}

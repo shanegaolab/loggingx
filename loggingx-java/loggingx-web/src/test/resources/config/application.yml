@@ -1,0 +1,22 @@
+# Overrides src/main/resources/application.yml (config/ takes precedence) so tests never touch the MySQL server.
+# Each application context gets its own empty database.
+spring:
+  datasource:
+    url: jdbc:h2:mem:${random.uuid};MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    hikari:
+      maximum-pool-size: 2
+# Log lines are kept in memory instead of ClickHouse, and the live view polls quickly without a settle delay.
+loggingx:
+  security:
+    jwt:
+      secret: test-only-jwt-secret-not-used-anywhere-else-0123456789
+  log:
+    storage: memory
+    tail:
+      poll-interval: 200
+      settle-delay: 0s
+  monitor:
+    # Tests evaluate alerts themselves; the scheduled evaluation would race with them.
+    alert-initial-delay: 3600000

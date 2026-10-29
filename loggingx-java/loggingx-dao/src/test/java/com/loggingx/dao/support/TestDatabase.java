@@ -1,0 +1,70 @@
+package com.loggingx.dao.support;
+
+import com.loggingx.dao.account.MybatisUserAccountRepository;
+import com.loggingx.dao.account.UserAccountMapper;
+import com.loggingx.dao.dept.DeptMapper;
+import com.loggingx.dao.dept.MybatisDeptRepository;
+import com.loggingx.dao.log.InMemoryLogRecordRepository;
+import com.loggingx.dao.log.LogStoreMapper;
+import com.loggingx.dao.log.MybatisLogStoreRepository;
+import com.loggingx.dao.menu.MenuMapper;
+import com.loggingx.dao.menu.MybatisMenuRepository;
+import com.loggingx.dao.post.MybatisPostRepository;
+import com.loggingx.dao.post.PostMapper;
+import com.loggingx.dao.role.MybatisRoleRepository;
+import com.loggingx.dao.role.RoleMapper;
+import org.mybatis.spring.SqlSessionFactoryBean;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+
+import java.util.UUID;
+
+/**
+ * The production repositories on a fresh, empty H2 database in MySQL mode with the production schema. Shared with
+ * other modules' tests through the test-jar.
+ */
+public final class TestDatabase {
+
+    public final MybatisUserAccountRepository userAccountRepository;
+    public final MybatisRoleRepository roleRepository;
+    public final MybatisMenuRepository menuRepository;
+    public final MybatisDeptRepository deptRepository;
+    public final MybatisPostRepository postRepository;
+    public final MybatisLogStoreRepository logStoreRepository;
+    /** Log lines are kept in memory: the production store is ClickHouse, which H2 cannot stand in for. */
+    public final InMemoryLogRecordRepository logRecordRepository;
+
+    public TestDatabase() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+        new ResourceDatabasePopulator(new ClassPathResource("db/schema.sql")).execute(dataSource);
+
+        // Mirrors the mybatis.* settings in loggingx-web's application.yml.
+        SqlSessionTemplate session;
+        try {
+            SqlSessionFactoryBean factory = new SqlSessionFactoryBean();
+            factory.setDataSource(dataSource);
+            factory.setMapperLocations(
+                    new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/*.xml"));
+            factory.setTypeHandlers(new UtcInstantTypeHandler());
+            session = new SqlSessionTemplate(factory.getObject());
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot set up MyBatis", e);
+        }
+
+        DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(dataSource);
+        userAccountRepository = new MybatisUserAccountRepository(session.getMapper(UserAccountMapper.class),
+                transactionManager);
+        roleRepository = new MybatisRoleRepository(session.getMapper(RoleMapper.class), transactionManager);
+        menuRepository = new MybatisMenuRepository(session.getMapper(MenuMapper.class), transactionManager);
+        deptRepository = new MybatisDeptRepository(session.getMapper(DeptMapper.class), transactionManager);
+        postRepository = new MybatisPostRepository(session.getMapper(PostMapper.class), transactionManager);
+        logStoreRepository = new MybatisLogStoreRepository(session.getMapper(LogStoreMapper.class),
+                transactionManager);
+        logRecordRepository = new InMemoryLogRecordRepository(50_000);
+    }
+}

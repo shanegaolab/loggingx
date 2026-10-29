@@ -1,0 +1,54 @@
+// 自定义Element 暗黑主题：纯黑页面、#1C1C1E 卡片、#2C2C2E 浮层，
+// 状态色使用深色模式下更亮的苹果系统色，文字与边框为中性灰（不偏蓝）
+@use 'element-plus/theme-chalk/src/dark/var.scss' with (
+  $colors: (
+    'primary': (
+      'base': #0a84ff
+    ),
+    'success': (
+      'base': #30d158
+    ),
+    'warning': (
+      'base': #ff9f0a
+    ),
+    'danger': (
+      'base': #ff453a
+    ),
+    'error': (
+      'base': #ff453a
+    ),
+    'info': (
+      'base': #98989d
+    )
+  ),
+  $bg-color: (
+    'page': #000000,
+    '': #1c1c1e,
+    'overlay': #2c2c2e
+  ),
+  $text-color: (
+    'primary': rgba(245, 245, 247, 0.96),
+    'regular': rgba(245, 245, 247, 0.84),
+    'secondary': rgba(235, 235, 245, 0.6),
+    'placeholder': rgba(235, 235, 245, 0.42),
+    'disabled': rgba(235, 235, 245, 0.28)
+  ),
+  $border-color: (
+    'darker': rgba(255, 255, 255, 0.26),
+    'dark': rgba(255, 255, 255, 0.22),
+    '': rgba(255, 255, 255, 0.18),
+    'light': rgba(255, 255, 255, 0.14),
+    'lighter': rgba(255, 255, 255, 0.1),
+    'extra-light': rgba(255, 255, 255, 0.07)
+  ),
+  $fill-color: (
+    'darker': rgba(255, 255, 255, 0.18),
+    'dark': rgba(255, 255, 255, 0.14),
+    '': rgba(255, 255, 255, 0.1),
+    'light': rgba(255, 255, 255, 0.07),
+    'lighter': rgba(255, 255, 255, 0.05),
+    'extra-light': rgba(255, 255, 255, 0.03),
+    'blank': transparent
+  )
+);
+@use 'element-plus/theme-chalk/src/dark/css-vars.scss' as *;

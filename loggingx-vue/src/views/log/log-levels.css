@@ -1,0 +1,51 @@
+/*
+ * 日志级别配色（全局类）：不随主题色变化，保证各级别一眼可辨。
+ * 用法：元素加 lx-lv-<level> 类后，通过 var(--lx-level) 取该级别颜色。
+ */
+.lx-lv-trace {
+  --lx-level: #94a3b8;
+}
+
+.lx-lv-debug {
+  --lx-level: #64748b;
+}
+
+.lx-lv-info {
+  --lx-level: #2563eb;
+}
+
+.lx-lv-warn {
+  --lx-level: #d97706;
+}
+
+.lx-lv-error {
+  --lx-level: #dc2626;
+}
+
+.lx-lv-fatal {
+  --lx-level: #a21caf;
+}
+
+html.dark .lx-lv-trace {
+  --lx-level: #64748b;
+}
+
+html.dark .lx-lv-debug {
+  --lx-level: #94a3b8;
+}
+
+html.dark .lx-lv-info {
+  --lx-level: #60a5fa;
+}
+
+html.dark .lx-lv-warn {
+  --lx-level: #fbbf24;
+}
+
+html.dark .lx-lv-error {
+  --lx-level: #f87171;
+}
+
+html.dark .lx-lv-fatal {
+  --lx-level: #e879f9;
+}
