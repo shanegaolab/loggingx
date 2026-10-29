@@ -61,7 +61,7 @@
 
 ### 多 agent 诊断（loggingx-ai）
 
-设置 `LOGGINGX_AI_AGENT_URL`（如 `http://localhost:8001`）后，第 3 步不再由单个模型完成，而是把日志、代码片段和提交号发给 [loggingx-ai](https://github.com/shanegaolab/loggingx-ai) 服务：日志分析（DeepSeek）和代码分析（通义千问 Coder）并行，再由根因、修复、评审三个 agent 依次完成，评审不通过会退回修复重做。各 agent 的模型在 loggingx-ai 中配置，「设置」里的提供方和模型此时只用于智能问答。诊断记录的提供方显示为「LoggingX AI 多 agent」，模型为根因 agent 使用的模型，token 数是所有 agent 的合计。
+设置 `LOGGINGX_AI_AGENT_URL`（如 `http://localhost:8001`）后，第 3 步不再由单个模型完成，而是把日志、代码片段和提交号发给 [loggingx-ai](../../loggingx-ai) 服务：日志分析（DeepSeek）和代码分析（通义千问 Coder）并行，再由根因、修复、评审三个 agent 依次完成，评审不通过会退回修复重做。各 agent 的模型在 loggingx-ai 中配置，「设置」里的提供方和模型此时只用于智能问答。诊断记录的提供方显示为「LoggingX AI 多 agent」，模型为根因 agent 使用的模型，token 数是所有 agent 的合计。
 
 | 变量 | 说明 |
 | --- | --- |

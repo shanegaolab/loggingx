@@ -657,7 +657,7 @@ a { color: var(--link); }
       <div><strong>5500<small>/5500</small></strong><span>断网、崩溃实测，一行不少</span></div>
       <div><strong>1<small> 条命令</small></strong><span>装好 Agent，配置远程下发</span></div>
       <div><strong>4<small> 种环境</small></strong><span>Linux · Windows · Docker · K8s</span></div>
-      <div><strong>3<small> 家模型</small></strong><span>DeepSeek · OpenAI · Claude</span></div>
+      <div><strong>4<small> 家模型</small></strong><span>DeepSeek · 千问 · OpenAI · Claude</span></div>
     </div>
   </section>
 
@@ -780,7 +780,7 @@ Caused by: java.net.SocketTimeoutException: Read timed out</pre>
           <p class="lead">智能问答把知识库、历史诊断、告警、错误日志和代码一起检索出来再回答，每句话都标出处；AI 诊断在新错误出现时自动结合 Git 仓库里的源代码，给出原因和可以直接评审的修改。</p>
         </div>
         <div class="ai-badges" aria-label="支持的模型">
-          <span>DeepSeek</span><span>OpenAI</span><span>Anthropic Claude</span><span>可接公司内部模型网关</span>
+          <span>DeepSeek</span><span>通义千问</span><span>OpenAI</span><span>Anthropic Claude</span><span>可接公司内部模型网关</span>
         </div>
       </div>
 
@@ -809,7 +809,7 @@ Caused by: java.net.SocketTimeoutException: Read timed out</pre>
         <!-- AI 诊断 -->
         <article class="ai-panel" aria-labelledby="ai-diag-title">
           <div class="ai-panel__head"><h3 id="ai-diag-title">AI 诊断</h3><span class="ai-tag">结合 Git 代码库</span></div>
-          <p>新类型的错误第一次出现、日志告警触发，或在日志查询里点一下，就会按堆栈找到出错的源文件一起分析。</p>
+          <p>新类型的错误第一次出现、日志告警触发，或在日志查询里点一下，就会按堆栈找到出错的源文件一起分析。开启多 agent 诊断后，DeepSeek 和通义千问分工完成日志分析、代码分析、根因、修复和评审，评审不通过会退回重做。</p>
           <div class="diag-summary">
             <small>java.lang.IllegalStateException · 新错误 · 订单服务</small>
             <strong>库存扣减前没有检查剩余数量</strong>
@@ -1036,7 +1036,7 @@ Caused by: java.net.SocketTimeoutException: Read timed out</pre>
         </details>
         <details>
           <summary>AI 用的是哪家模型？代码会发到哪里？</summary>
-          <p>支持 DeepSeek、OpenAI 和 Anthropic Claude，在页面上选择即可，也可以指向公司内部的模型网关。分析用到的日志和代码片段只发给你选择的模型，代码仓库的访问令牌加密保存。</p>
+          <p>支持 DeepSeek、通义千问、OpenAI 和 Anthropic Claude，在页面上选择即可，也可以指向公司内部的模型网关；多 agent 诊断由 DeepSeek 和通义千问协作完成。分析用到的日志和代码片段只发给你选择的模型，代码仓库的访问令牌加密保存。</p>
         </details>
         <details>
           <summary>不同团队能分开管理吗？</summary>

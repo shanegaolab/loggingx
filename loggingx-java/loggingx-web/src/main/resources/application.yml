@@ -129,7 +129,7 @@ loggingx:
       topics: ${LOGGINGX_KAFKA_TOPICS:loggingx-logs}
       group-id: ${LOGGINGX_KAFKA_GROUP_ID:loggingx}
   ai:
-    # The loggingx-ai service (https://github.com/shanegaolab/loggingx-ai) diagnoses errors with several agents on
+    # The loggingx-ai service (../loggingx-ai in this repository) diagnoses errors with several agents on
     # DeepSeek and Qwen. When its URL is set, AI diagnosis goes there instead of a single prompt to the provider
     # chosen in the settings (which the assistant keeps using).
     agent:

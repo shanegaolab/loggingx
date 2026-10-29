@@ -38,7 +38,8 @@ LoggingX 把日志相关的工作放进一套部署在你自己服务器上的�
 **AI 运维**
 - 用自然语言提问，AI 从知识库、历史诊断、错误归类、告警、错误日志和代码中检索资料后回答，并标注出处（RAG）。
 - AI 诊断：新出现的错误类型、日志告警或手动选择的日志，连同堆栈指向的源代码一起分析，给出原因、修改建议和 diff。
-- 错误按指纹归类；模型支持 DeepSeek、OpenAI、Anthropic Claude。
+- 多 agent 诊断（可选的 `loggingx-ai` 服务，基于 LangGraph）：日志分析和代码分析并行，再由根因、修复、评审 agent 依次完成，模型用 DeepSeek 和通义千问；评审不通过会退回修复重做。
+- 错误按指纹归类；模型支持 DeepSeek、通义千问、OpenAI、Anthropic Claude。
 
 **日志备份**
 - 每天把各日志库的日志按天压缩为 gzip 格式的 NDJSON，存到 S3 兼容对象存储（MinIO、阿里云 OSS、腾讯云 COS、AWS S3）。
@@ -77,8 +78,9 @@ loggingx
 │   ├── loggingx-dao       # MySQL（MyBatis）和 ClickHouse 数据访问
 │   ├── loggingx-thirdparty、loggingx-common
 │   └── docs/              # Agent、告警、AI 诊断、备份文档
-└── loggingx-vue       # 控制台：Vue 3 + TypeScript + Element Plus + Vite
-    └── promo/             # 单文件产品宣传页
+├── loggingx-vue       # 控制台：Vue 3 + TypeScript + Element Plus + Vite
+│   └── promo/             # 单文件产品宣传页
+└── loggingx-ai        # 多 agent AI 诊断：Python 3.14、FastAPI、LangGraph、DeepSeek + 通义千问
 ```
 
 ## 技术栈
@@ -89,6 +91,7 @@ loggingx
 | 存储 | ClickHouse（日志、主机指标）、MySQL（账号、配置）、Redis |
 | 采集 | Vector |
 | 前端 | Vue 3.5、TypeScript、Element Plus、Vite 7、Pinia、ECharts 6、Tailwind CSS 4 |
+| AI 诊断 | Python 3.14、FastAPI、LangGraph、LangChain、DeepSeek、通义千问（百炼 DashScope） |
 
 ## 快速开始
 
@@ -130,6 +133,7 @@ pnpm dev
 | `LOGGINGX_CLICKHOUSE_URL` / `_USERNAME` / `_PASSWORD` | ClickHouse；`LOGGINGX_LOG_STORAGE=memory` 时日志只保存在内存 |
 | `LOGGINGX_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | 没有超级管理员时自动创建的第一个超级管理员 |
 | `LOGGINGX_AI_DEEPSEEK_API_KEY`、`LOGGINGX_AI_OPENAI_API_KEY`、`LOGGINGX_AI_ANTHROPIC_API_KEY` | AI 模型；填写了 Key 的模型才会启用 |
+| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | 把 AI 诊断交给 [loggingx-ai](loggingx-ai/README.md) 多 agent 服务（DeepSeek、通义千问的 Key 在那里配置） |
 | `LOGGINGX_BACKUP_SECRET` | 加密保存的密码和密钥、为下载链接签名（默认同 JWT 密钥） |
 | `LOGGINGX_KAFKA_ENABLED` / `_BOOTSTRAP_SERVERS` / `_TOPICS` | 可选的 Kafka 日志上报 |
 
@@ -167,8 +171,9 @@ server {
 - [Agent：安装、可靠性、主机监控](loggingx-java/docs/agent.md)
 - [告警与通知](loggingx-java/docs/alerting.md)
 - [AI 运维：智能问答、诊断、错误归类](loggingx-java/docs/ai-diagnosis.md)
+- [多 agent AI 诊断服务](loggingx-ai/README.md)
 - [日志备份与恢复](loggingx-java/docs/backup.md)
 
 ## 参与贡献
 
-欢迎在 [github.com/shanegaolab/loggingx](https://github.com/shanegaolab/loggingx/issues) 提 Issue 和 Pull Request。提交 PR 前，请在 `loggingx-java` 下运行 `mvn test`，在 `loggingx-vue` 下运行 `pnpm lint`。
+欢迎在 [github.com/shanegaolab/loggingx](https://github.com/shanegaolab/loggingx/issues) 提 Issue 和 Pull Request。提交 PR 前，请在 `loggingx-java` 下运行 `mvn test`，在 `loggingx-vue` 下运行 `pnpm lint`，在 `loggingx-ai` 下运行 `uv run pytest`。

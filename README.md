@@ -38,7 +38,8 @@ LoggingX puts the whole log workflow into one system that runs on your own serve
 **AI ops**
 - Ask questions in plain language; answers are retrieved from your knowledge base, past diagnoses, error groups, alerts, error logs and code, with numbered sources (RAG).
 - AI diagnosis: new error types, log alerts or hand-picked logs are analysed together with the source code their stack traces point to, producing a cause, a fix suggestion and a diff.
-- Errors grouped by fingerprint; providers: DeepSeek, OpenAI, Anthropic Claude.
+- Multi-agent diagnosis (optional `loggingx-ai` service, LangGraph): log analysis and code analysis run in parallel, then root cause, fix and review agents on DeepSeek and Qwen; a rejected fix goes back for another round.
+- Errors grouped by fingerprint; providers: DeepSeek, Qwen (Tongyi Qianwen), OpenAI, Anthropic Claude.
 
 **Backups**
 - Daily gzip-compressed NDJSON archives per log store in any S3-compatible storage (MinIO, Aliyun OSS, Tencent COS, AWS S3).
@@ -77,8 +78,9 @@ loggingx
 │   ├── loggingx-dao       # MySQL (MyBatis) and ClickHouse repositories
 │   ├── loggingx-thirdparty, loggingx-common
 │   └── docs/              # agent, alerting, AI diagnosis, backups
-└── loggingx-vue       # Console: Vue 3 + TypeScript + Element Plus + Vite
-    └── promo/             # single-file product page
+├── loggingx-vue       # Console: Vue 3 + TypeScript + Element Plus + Vite
+│   └── promo/             # single-file product page
+└── loggingx-ai        # Multi-agent AI diagnosis: Python 3.14, FastAPI, LangGraph, DeepSeek + Qwen
 ```
 
 ## Tech stack
@@ -89,6 +91,7 @@ loggingx
 | Storage | ClickHouse (logs, host metrics), MySQL (accounts, settings), Redis |
 | Agent | Vector |
 | Frontend | Vue 3.5, TypeScript, Element Plus, Vite 7, Pinia, ECharts 6, Tailwind CSS 4 |
+| AI diagnosis | Python 3.14, FastAPI, LangGraph, LangChain, DeepSeek, Qwen (DashScope) |
 
 ## Quick start
 
@@ -130,6 +133,7 @@ All settings can be overridden with `LOGGINGX_*` environment variables, or with 
 | `LOGGINGX_CLICKHOUSE_URL` / `_USERNAME` / `_PASSWORD` | ClickHouse; `LOGGINGX_LOG_STORAGE=memory` keeps logs in memory instead |
 | `LOGGINGX_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | First super administrator, created when none exists |
 | `LOGGINGX_AI_DEEPSEEK_API_KEY`, `LOGGINGX_AI_OPENAI_API_KEY`, `LOGGINGX_AI_ANTHROPIC_API_KEY` | AI providers; a provider is enabled when its key is set |
+| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | Hand AI diagnosis to the [loggingx-ai](loggingx-ai/README.md) multi-agent service (DeepSeek and Qwen keys are set there) |
 | `LOGGINGX_BACKUP_SECRET` | Encrypts stored passwords and keys and signs download links (defaults to the JWT secret) |
 | `LOGGINGX_KAFKA_ENABLED` / `_BOOTSTRAP_SERVERS` / `_TOPICS` | Optional Kafka ingestion |
 
@@ -165,8 +169,9 @@ server {
 - [Agent: installation, reliability, host monitoring](loggingx-java/docs/agent.md)
 - [Alerting and notifications](loggingx-java/docs/alerting.md)
 - [AI ops: Q&A, diagnosis, error groups](loggingx-java/docs/ai-diagnosis.md)
+- [Multi-agent AI diagnosis service](loggingx-ai/README.md)
 - [Backups and restore](loggingx-java/docs/backup.md)
 
 ## Contributing
 
-Issues and pull requests are welcome at [github.com/shanegaolab/loggingx](https://github.com/shanegaolab/loggingx/issues). Before sending a pull request, run `mvn test` in `loggingx-java` and `pnpm lint` in `loggingx-vue`.
+Issues and pull requests are welcome at [github.com/shanegaolab/loggingx](https://github.com/shanegaolab/loggingx/issues). Before sending a pull request, run `mvn test` in `loggingx-java`, `pnpm lint` in `loggingx-vue` and `uv run pytest` in `loggingx-ai`.
