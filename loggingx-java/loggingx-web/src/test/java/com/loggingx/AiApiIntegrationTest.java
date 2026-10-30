@@ -1,21 +1,20 @@
 package com.loggingx;
 
 import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
-import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -23,44 +22,31 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Only DeepSeek is configured, pointing at a local server that answers in DeepSeek's (OpenAI-compatible) format.
- * It rejects any request whose message contains {@value #FAIL}, as the real API does a wrong key.
+ * The chat API against a fake loggingx-ai service that only has a DeepSeek key. It fails any request whose message
+ * contains {@value #FAIL}, as it does when the model rejects its key.
  */
 class AiApiIntegrationTest extends ApiIntegrationTest {
 
     private static final String FAIL = "please fail";
     private static final String SLOW = "please hold back";
-    private static final String DEEPSEEK_REPLY = """
-            {"id":"ds-1","object":"chat.completion","created":1,"model":"deepseek-v4-flash",
-             "choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
-             "usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}""";
-    private static final String DEEPSEEK_STREAM = """
-            data: {"id":"d1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"po"},"finish_reason":null}]}
+    private static final Map<String, Object> REPLY = Map.of("provider", "deepseek", "model", "deepseek-v4-flash",
+            "content", "pong", "promptTokens", 7, "completionTokens", 1);
+    private static final String STREAM = FakeLoggingxAi.event("message", Map.of("content", "po"))
+            + FakeLoggingxAi.event("message", Map.of("content", "ng")) + FakeLoggingxAi.event("done", REPLY);
 
-            data: {"id":"d1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"ng"},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}
-
-            data: [DONE]
-
-            """;
-    private static final String REJECTED = """
-            {"error":{"message":"Authentication Fails","type":"authentication_error"}}""";
-
-    private static final HttpServer DEEPSEEK = startDeepSeek();
+    private static final FakeLoggingxAi AI = new FakeLoggingxAi(List.of("deepseek"), AiApiIntegrationTest::answer);
     private static volatile CountDownLatch firstChunkReceived = new CountDownLatch(1);
     private static volatile boolean heldBackChunkReleased;
 
     @DynamicPropertySource
     static void aiProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.ai.openai.api-key", () -> "");
-        registry.add("spring.ai.anthropic.api-key", () -> "");
-        registry.add("spring.ai.deepseek.api-key", () -> "test-key");
-        registry.add("spring.ai.deepseek.base-url",
-                () -> "http://127.0.0.1:" + DEEPSEEK.getAddress().getPort());
+        registry.add("loggingx.ai.url", AI::url);
+        registry.add("loggingx.ai.api-key", () -> FakeLoggingxAi.API_KEY);
     }
 
     @AfterAll
-    static void stopDeepSeek() {
-        DEEPSEEK.stop(0);
+    static void stopAi() {
+        AI.stop();
     }
 
     @Test
@@ -72,23 +58,40 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void chatsWithConfiguredProvider() throws Exception {
+    void chatsThroughTheService() throws Exception {
         HttpResponse<String> response = send("POST", "/api/ai/chat", login("user", DEMO_PASSWORD),
-                "{\"provider\":\"deepseek\",\"message\":\"ping\"}");
+                "{\"provider\":\"deepseek\",\"message\":\"ping\",\"systemPrompt\":\"be brief\"}");
 
         assertEquals(200, response.statusCode(), response.body());
         assertTrue(response.body().contains("\"content\":\"pong\""), response.body());
         assertTrue(response.body().contains("\"model\":\"deepseek-v4-flash\""), response.body());
         assertTrue(response.body().contains("\"promptTokens\":7"), response.body());
+        FakeLoggingxAi.Call call = AI.calls("/api/v1/chat").getLast();
+        assertEquals("be brief", call.body().path("systemPrompt").asString());
+        assertEquals(FakeLoggingxAi.API_KEY, call.apiKey());
     }
 
     @Test
-    void rejectsUnconfiguredProvider() throws Exception {
+    void theServicePicksTheProviderWhenNoneIsGiven() throws Exception {
         HttpResponse<String> response = send("POST", "/api/ai/chat", login("user", DEMO_PASSWORD),
-                "{\"provider\":\"openai\",\"message\":\"ping\"}");
+                "{\"message\":\"ping\"}");
 
-        assertEquals(400, response.statusCode(), response.body());
-        assertTrue(response.body().contains("not configured"), response.body());
+        assertEquals(200, response.statusCode(), response.body());
+        assertTrue(AI.calls("/api/v1/chat").getLast().body().path("provider").isNull());
+    }
+
+    @Test
+    void rejectsUnknownAndUnconfiguredProviders() throws Exception {
+        String token = login("user", DEMO_PASSWORD);
+        HttpResponse<String> unknown = send("POST", "/api/ai/chat", token,
+                "{\"provider\":\"openai\",\"message\":\"ping\"}");
+        assertEquals(400, unknown.statusCode(), unknown.body());
+        assertTrue(unknown.body().contains("provider must be deepseek or qwen"), unknown.body());
+
+        HttpResponse<String> unconfigured = send("POST", "/api/ai/chat", token,
+                "{\"provider\":\"qwen\",\"message\":\"ping\"}");
+        assertEquals(400, unconfigured.statusCode(), unconfigured.body());
+        assertTrue(unconfigured.body().contains("没有配置密钥"), unconfigured.body());
     }
 
     @Test
@@ -101,7 +104,7 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void reportsProviderFailureAsBadGateway() throws Exception {
+    void reportsModelFailureAsBadGateway() throws Exception {
         HttpResponse<String> response = send("POST", "/api/ai/chat", login("user", DEMO_PASSWORD),
                 "{\"provider\":\"deepseek\",\"message\":\"" + FAIL + "\"}");
 
@@ -133,8 +136,8 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
     }
 
     /**
-     * The provider holds back its second chunk until the client has received the first, which only happens if
-     * events are flushed as they arrive rather than buffered until the answer is complete.
+     * The service holds back its second piece until the client has received the first, which only happens if
+     * events are passed on as they arrive rather than buffered until the answer is complete.
      */
     @Test
     void streamsEventsBeforeTheAnswerIsComplete() throws Exception {
@@ -163,15 +166,14 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void streamReportsProviderFailureAsErrorEvent() throws Exception {
+    void streamReportsModelFailureAsErrorEvent() throws Exception {
         HttpResponse<String> response = send("POST", "/api/ai/chat/stream", login("user", DEMO_PASSWORD),
                 "{\"provider\":\"deepseek\",\"message\":\"" + FAIL + "\"}", "text/event-stream");
 
         assertEquals(200, response.statusCode(), response.body());
         String body = response.body().replace("\r\n", "\n");
-        assertTrue(body.startsWith("event:error\ndata:{\"code\":502,\"msg\":\"AI provider 'deepseek' request failed"),
-                body);
-        assertTrue(!body.contains("event:done"), body);
+        assertTrue(body.startsWith("event:error\ndata:{\"code\":502,\"msg\":\"loggingx-ai failed: "), body);
+        assertTrue(body.contains("Authentication Fails") && !body.contains("event:done"), body);
     }
 
     @Test
@@ -179,9 +181,9 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
         String token = login("user", DEMO_PASSWORD);
 
         HttpResponse<String> unconfigured = send("POST", "/api/ai/chat/stream", token,
-                "{\"provider\":\"openai\",\"message\":\"ping\"}", "text/event-stream");
+                "{\"provider\":\"qwen\",\"message\":\"ping\"}", "text/event-stream");
         assertEquals(400, unconfigured.statusCode(), unconfigured.body());
-        assertTrue(unconfigured.body().contains("not configured"), unconfigured.body());
+        assertTrue(unconfigured.body().contains("没有配置密钥"), unconfigured.body());
 
         HttpResponse<String> blank = send("POST", "/api/ai/chat/stream", token,
                 "{\"provider\":\"deepseek\",\"message\":\"\"}", "text/event-stream");
@@ -197,34 +199,32 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
         assertEquals(401, response.statusCode(), response.body());
     }
 
-    private static HttpServer startDeepSeek() {
-        try {
-            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/chat/completions", exchange -> {
-                String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                if (request.contains(SLOW)) {
-                    streamSlowly(exchange);
-                    return;
-                }
-                boolean stream = request.contains("\"stream\":true");
-                int status = request.contains(FAIL) ? 401 : 200;
-                String reply = status == 401 ? REJECTED : stream ? DEEPSEEK_STREAM : DEEPSEEK_REPLY;
-                byte[] body = reply.getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type",
-                        status == 200 && stream ? "text/event-stream" : "application/json");
-                exchange.sendResponseHeaders(status, body.length);
-                exchange.getResponseBody().write(body);
-                exchange.close();
-            });
-            server.start();
-            return server;
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
+    /**
+     * Answers like loggingx-ai with only a DeepSeek key.
+     */
+    private static void answer(HttpExchange exchange, String path, JsonNode body) throws IOException {
+        boolean stream = path.endsWith("/stream");
+        String message = body.path("message").asString("");
+        if ("qwen".equals(body.path("provider").asString(null))) {
+            FakeLoggingxAi.respond(exchange, 400, "{\"detail\":\"AI 提供方 qwen 没有配置密钥\"}");
+        } else if (message.contains(FAIL)) {
+            String error = "调用模型失败：deepseek:deepseek-v4-flash: Authentication Fails";
+            if (stream) {
+                FakeLoggingxAi.stream(exchange, FakeLoggingxAi.event("error", Map.of("message", error)));
+            } else {
+                FakeLoggingxAi.respond(exchange, 502, FakeLoggingxAi.json(Map.of("detail", error)));
+            }
+        } else if (message.contains(SLOW)) {
+            streamSlowly(exchange);
+        } else if (stream) {
+            FakeLoggingxAi.stream(exchange, STREAM);
+        } else {
+            FakeLoggingxAi.respond(exchange, 200, FakeLoggingxAi.json(REPLY));
         }
     }
 
     private static void streamSlowly(HttpExchange exchange) throws IOException {
-        String[] chunks = DEEPSEEK_STREAM.split("(?<=\n\n)", 2);
+        String[] chunks = STREAM.split("(?<=\n\n)", 2);
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, 0);
         OutputStream out = exchange.getResponseBody();

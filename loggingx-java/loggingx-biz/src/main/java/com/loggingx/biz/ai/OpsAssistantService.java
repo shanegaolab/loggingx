@@ -408,10 +408,13 @@ public class OpsAssistantService {
         if (clean.length() > 2000) {
             throw new BadRequestException("The question must be at most 2000 characters");
         }
+        if (!chatService.enabled()) {
+            throw new BadRequestException("AI is not configured: set LOGGINGX_AI_URL to the loggingx-ai service");
+        }
         List<AiProvider> available = chatService.providers();
         if (available.isEmpty()) {
-            throw new BadRequestException("No AI provider is configured: set one of LOGGINGX_AI_DEEPSEEK_API_KEY, "
-                    + "LOGGINGX_AI_OPENAI_API_KEY or LOGGINGX_AI_ANTHROPIC_API_KEY");
+            throw new BadRequestException("loggingx-ai at " + chatService.url() + " is unreachable or has no model "
+                    + "provider: set LOGGINGX_AI_DEEPSEEK_API_KEY or LOGGINGX_AI_QWEN_API_KEY for it");
         }
         AiSettings settings = mapper.selectSettings();
         AiProvider provider = settings == null || settings.provider() == null ? available.get(0)
