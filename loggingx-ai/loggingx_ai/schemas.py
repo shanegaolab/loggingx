@@ -35,6 +35,23 @@ class DiagnoseRequest(CamelModel):
     code_refs: list[CodeRef] = Field(default_factory=list, max_length=20)
 
 
+class ChatRequest(CamelModel):
+    """One chat turn, as loggingx-java's AiChatCommand; provider and model default to the first configured provider."""
+
+    provider: str | None = Field(default=None, max_length=32)
+    model: str | None = Field(default=None, max_length=100)
+    message: str = Field(min_length=1, max_length=200_000)
+    system_prompt: str | None = Field(default=None, max_length=50_000)
+
+
+class ChatResponse(CamelModel):
+    provider: str
+    model: str
+    content: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
 class AgentStep(CamelModel):
     """One model call: which agent, which model, and what it cost."""
 

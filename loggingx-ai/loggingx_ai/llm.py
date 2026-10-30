@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -11,7 +12,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
 
 from loggingx_ai.config import Settings
-from loggingx_ai.schemas import AgentStep
+from loggingx_ai.schemas import AgentStep, ChatResponse
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +80,8 @@ class ChatClient:
                 temperature=settings.temperature,
                 timeout=settings.request_timeout,
                 max_retries=settings.max_retries,
+                # Report token usage on the last chunk of a stream too.
+                stream_usage=True,
             )
             self._models[spec] = model
         return model
@@ -96,6 +99,46 @@ class ChatClient:
                             spec.model, error)
                 failures.append(f"{spec.provider}:{spec.model}: {error}")
         raise LlmError(f"{agent} 调用模型失败：" + "；".join(failures))
+
+    def chat_spec(self, provider: str | None, model: str | None) -> ModelSpec:
+        """The model of a plain chat: the given provider, or the first configured one, and its default model."""
+
+        configured = self.configured_providers()
+        if not configured:
+            raise LlmError("没有配置 AI 提供方：请设置 LOGGINGX_AI_DEEPSEEK_API_KEY 或 LOGGINGX_AI_QWEN_API_KEY")
+        name = (provider or "").strip().lower() or configured[0]
+        if name not in PROVIDERS:
+            raise ValueError(f"Unknown AI provider: {provider}")
+        if name not in configured:
+            raise ValueError(f"AI provider '{name}' is not configured")
+        default = self._settings.deepseek_model if name == "deepseek" else self._settings.qwen_model
+        return ModelSpec(name, (model or "").strip() or default)
+
+    async def chat(self, spec: ModelSpec, system: str | None, user: str) -> ChatResponse:
+        try:
+            reply = await self._chat(spec).ainvoke(_messages(system, user))
+        except Exception as error:  # noqa: BLE001 - reported to the caller as a provider failure
+            raise LlmError(f"{spec.provider}:{spec.model} 调用失败：{error}") from error
+        usage = reply.usage_metadata or {}
+        return ChatResponse(provider=spec.provider, model=spec.model, content=reply.text,
+                            prompt_tokens=usage.get("input_tokens"), completion_tokens=usage.get("output_tokens"))
+
+    async def stream(self, spec: ModelSpec, system: str | None, user: str) -> AsyncIterator[str | ChatResponse]:
+        """The answer's text piece by piece, then the whole answer with its token usage."""
+
+        content: list[str] = []
+        usage: dict = {}
+        try:
+            async for chunk in self._chat(spec).astream(_messages(system, user)):
+                if chunk.usage_metadata:
+                    usage = chunk.usage_metadata
+                if chunk.text:
+                    content.append(chunk.text)
+                    yield chunk.text
+        except Exception as error:  # noqa: BLE001 - reported to the caller as a provider failure
+            raise LlmError(f"{spec.provider}:{spec.model} 调用失败：{error}") from error
+        yield ChatResponse(provider=spec.provider, model=spec.model, content="".join(content),
+                           prompt_tokens=usage.get("input_tokens"), completion_tokens=usage.get("output_tokens"))
 
     async def _ask[T: BaseModel](
         self, spec: ModelSpec, agent: str, system: str, user: str, schema: type[T]
@@ -120,6 +163,10 @@ class ChatClient:
             step.duration_ms = int((time.monotonic() - started) * 1000)
             return result, step
         raise AssertionError("unreachable")
+
+
+def _messages(system: str | None, user: str) -> list:
+    return [SystemMessage(system), HumanMessage(user)] if system and system.strip() else [HumanMessage(user)]
 
 
 def parse_json(text: str) -> dict:

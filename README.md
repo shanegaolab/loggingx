@@ -73,7 +73,7 @@ loggingx
 ├── loggingx-java      # Backend: Spring Boot 4.1 / Java 25, multi-module Maven project
 │   ├── loggingx-web       # entry point and HTTP API
 │   ├── loggingx-biz       # business services (logs, monitoring, alerting, AI, backups)
-│   ├── loggingx-ai        # chat models via Spring AI
+│   ├── loggingx-ai        # client of the loggingx-ai service
 │   ├── loggingx-auth      # login, JWT, security
 │   ├── loggingx-dao       # MySQL (MyBatis) and ClickHouse repositories
 │   ├── loggingx-thirdparty, loggingx-common
@@ -87,7 +87,7 @@ loggingx
 
 | Part | Stack |
 | --- | --- |
-| Backend | Java 25, Spring Boot 4.1, Spring Security 7, Spring AI 2.0, MyBatis, JJWT |
+| Backend | Java 25, Spring Boot 4.1, Spring Security 7, MyBatis, JJWT |
 | Storage | ClickHouse (logs, host metrics), MySQL (accounts, settings), Redis |
 | Agent | Vector |
 | Frontend | Vue 3.5, TypeScript, Element Plus, Vite 7, Pinia, ECharts 6, Tailwind CSS 4 |
@@ -132,8 +132,7 @@ All settings can be overridden with `LOGGINGX_*` environment variables, or with 
 | `LOGGINGX_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
 | `LOGGINGX_CLICKHOUSE_URL` / `_USERNAME` / `_PASSWORD` | ClickHouse; `LOGGINGX_LOG_STORAGE=memory` keeps logs in memory instead |
 | `LOGGINGX_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | First super administrator, created when none exists |
-| `LOGGINGX_AI_DEEPSEEK_API_KEY`, `LOGGINGX_AI_OPENAI_API_KEY`, `LOGGINGX_AI_ANTHROPIC_API_KEY` | AI providers; a provider is enabled when its key is set |
-| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | Hand AI diagnosis to the [loggingx-ai](loggingx-ai/README.md) multi-agent service (DeepSeek and Qwen keys are set there) |
+| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | The [loggingx-ai](loggingx-ai/README.md) service that makes every model call (chat, ops assistant, multi-agent diagnosis); DeepSeek and Qwen keys are set there. Defaults to `http://localhost:8001` |
 | `LOGGINGX_BACKUP_SECRET` | Encrypts stored passwords and keys and signs download links (defaults to the JWT secret) |
 | `LOGGINGX_KAFKA_ENABLED` / `_BOOTSTRAP_SERVERS` / `_TOPICS` | Optional Kafka ingestion |
 

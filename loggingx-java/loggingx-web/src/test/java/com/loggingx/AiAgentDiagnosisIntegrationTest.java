@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * AI diagnosis handed to the loggingx-ai multi-agent service, against a fake of it, with no chat provider configured.
+ * AI diagnosis handed to the loggingx-ai multi-agent service, against a fake of it that reports no chat provider.
  */
 class AiAgentDiagnosisIntegrationTest extends ApiIntegrationTest {
 
@@ -36,9 +36,6 @@ class AiAgentDiagnosisIntegrationTest extends ApiIntegrationTest {
 
     @DynamicPropertySource
     static void aiProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.ai.openai.api-key", () -> "");
-        registry.add("spring.ai.anthropic.api-key", () -> "");
-        registry.add("spring.ai.deepseek.api-key", () -> "");
         registry.add("loggingx.ai.agent.url", () -> "http://127.0.0.1:" + AGENT.getAddress().getPort() + "/");
         registry.add("loggingx.ai.agent.api-key", () -> "agent-key");
     }

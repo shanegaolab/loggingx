@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * AI diagnosis end to end: a store linked to a Git repository, errors grouped by fingerprint, a new kind of error
- * analysed with the code its stack trace points to, against a fake DeepSeek.
+ * analysed with the code its stack trace points to, against a fake loggingx-ai.
  */
 class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
 
@@ -40,9 +40,9 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
             {"summary":"库存扣减前没有检查剩余数量","rootCause":"reserve 直接扣减库存，数量不足时变成负数后才抛出异常。",
              "suggestion":"在扣减前检查库存，不足时返回明确的业务错误。",
              "diff":"--- a/src/main/java/com/shop/OrderService.java\\n+++ b/src/main/java/com/shop/OrderService.java\\n@@ -5,3 +5,4 @@\\n+        if (stock < quantity) throw new OutOfStockException(sku);\\n",
-             "confidence":"high"}""";
+             "confidence":"high","model":"deepseek-chat","promptTokens":900,"completionTokens":120}""";
     private static final List<String> PROMPTS = new CopyOnWriteArrayList<>();
-    private static final HttpServer DEEPSEEK = startDeepSeek();
+    private static final HttpServer LOGGINGX_AI = startLoggingxAi();
 
     @Autowired
     private AiDiagnosisService aiDiagnosisService;
@@ -52,46 +52,32 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
 
     @DynamicPropertySource
     static void aiProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.ai.openai.api-key", () -> "");
-        registry.add("spring.ai.anthropic.api-key", () -> "");
-        registry.add("spring.ai.deepseek.api-key", () -> "test-key");
-        registry.add("spring.ai.deepseek.base-url", () -> "http://127.0.0.1:" + DEEPSEEK.getAddress().getPort());
+        registry.add("loggingx.ai.agent.url", () -> "http://127.0.0.1:" + LOGGINGX_AI.getAddress().getPort());
         registry.add("loggingx.ai.repo-dir", () -> tempDir("loggingx-it-repos").toString());
     }
 
     @AfterAll
-    static void stopDeepSeek() {
-        DEEPSEEK.stop(0);
+    static void stopLoggingxAi() {
+        LOGGINGX_AI.stop(0);
     }
 
-    private static HttpServer startDeepSeek() {
+    /**
+     * A fake loggingx-ai with DeepSeek configured: diagnoses answer {@link #ANSWER}, chat streams a fixed answer.
+     */
+    private static HttpServer startLoggingxAi() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/chat/completions", exchange -> {
-                String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                PROMPTS.add(request);
-                if (request.contains("\"stream\":true")) {
-                    byte[] body = (chunk("根据处理手册，库存为负是因为扣减前没有校验 [1]。") + chunk("建议先回滚订单。")
-                            + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-                    exchange.sendResponseHeaders(200, body.length);
-                    exchange.getResponseBody().write(body);
-                    exchange.close();
-                    return;
-                }
-                ObjectNode reply = JSON.createObjectNode();
-                reply.put("id", "ds-1").put("object", "chat.completion").put("created", 1)
-                        .put("model", "deepseek-v4-flash");
-                ObjectNode choice = reply.putArray("choices").addObject();
-                choice.put("index", 0).put("finish_reason", "stop");
-                choice.putObject("message").put("role", "assistant").put("content", ANSWER);
-                reply.putObject("usage").put("prompt_tokens", 900).put("completion_tokens", 120)
-                        .put("total_tokens", 1020);
-                byte[] body = JSON.writeValueAsBytes(reply);
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-                exchange.close();
+            server.createContext("/health", exchange -> respond(exchange, "application/json",
+                    "{\"status\":\"ok\",\"providers\":[\"deepseek\"]}"));
+            server.createContext("/api/v1/diagnoses", exchange -> {
+                PROMPTS.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                respond(exchange, "application/json", ANSWER);
+            });
+            server.createContext("/api/v1/chat/stream", exchange -> {
+                PROMPTS.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                respond(exchange, "text/event-stream", delta("根据处理手册，库存为负是因为扣减前没有校验 [1]。")
+                        + delta("建议先回滚订单。") + "event: result\ndata: {\"provider\":\"deepseek\","
+                        + "\"model\":\"deepseek-chat\",\"content\":\"...\"}\n\nevent: done\ndata: {}\n\n");
             });
             server.start();
             return server;
@@ -100,14 +86,18 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
         }
     }
 
-    private static String chunk(String content) {
-        ObjectNode chunk = JSON.createObjectNode();
-        chunk.put("id", "d1").put("object", "chat.completion.chunk").put("created", 1)
-                .put("model", "deepseek-v4-flash");
-        ObjectNode choice = chunk.putArray("choices").addObject();
-        choice.put("index", 0);
-        choice.putObject("delta").put("content", content);
-        return "data: " + JSON.writeValueAsString(chunk) + "\n\n";
+    private static void respond(com.sun.net.httpserver.HttpExchange exchange, String type, String text)
+            throws IOException {
+        byte[] body = text.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", type);
+        exchange.sendResponseHeaders(200, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
+    }
+
+    private static String delta(String content) {
+        ObjectNode delta = JSON.createObjectNode().put("content", content);
+        return "event: delta\ndata: " + JSON.writeValueAsString(delta) + "\n\n";
     }
 
     private static Path tempDir(String prefix) {
@@ -220,7 +210,7 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
         assertTrue(detail.contains("\"path\":\"src/main/java/com/shop/OrderService.java\""), detail);
         assertTrue(detail.contains("\"focusLine\":7"), detail);
         assertTrue(detail.contains("OutOfStockException"), "the diff is kept: " + detail);
-        assertTrue(PROMPTS.get(0).contains("STOCK-LINE"), "the code goes to the model: " + PROMPTS.get(0));
+        assertTrue(PROMPTS.get(0).contains("STOCK-LINE"), "the code goes to loggingx-ai: " + PROMPTS.get(0));
 
         // The bell shows it until read.
         String notices = send("GET", "/api/notices", token, null).body();

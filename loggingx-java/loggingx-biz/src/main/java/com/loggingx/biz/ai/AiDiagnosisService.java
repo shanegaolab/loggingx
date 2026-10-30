@@ -1,7 +1,5 @@
 package com.loggingx.biz.ai;
 
-import com.loggingx.ai.AiChatCommand;
-import com.loggingx.ai.AiChatReply;
 import com.loggingx.ai.AiChatService;
 import com.loggingx.ai.AiProvider;
 import com.loggingx.biz.ai.CodeRepositories.CodeRef;
@@ -16,7 +14,6 @@ import com.loggingx.biz.notify.NotifyService.RuleNotify;
 import com.loggingx.biz.support.SecretCipher;
 import com.loggingx.common.exception.BadRequestException;
 import com.loggingx.common.exception.NotFoundException;
-import com.loggingx.common.util.DateTimes;
 import com.loggingx.dao.ai.AiDiagnosis;
 import com.loggingx.dao.ai.AiMapper;
 import com.loggingx.dao.ai.AiSettings;
@@ -36,8 +33,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
@@ -90,19 +85,6 @@ public class AiDiagnosisService implements DisposableBean {
     private static final int CODE_CHARS = 24_000;
     private static final Pattern BRANCH = Pattern.compile("[\\w./-]{1,128}");
     private static final ZoneId ZONE = ZoneId.systemDefault();
-
-    static final String SYSTEM_PROMPT = """
-            你是一名资深软件工程师，负责排查线上错误。根据错误日志和相关源代码，找出最可能的根本原因，并给出具体的修改建议。
-            要求：
-            - 只依据给出的日志和代码推断；信息不足以确定时如实说明，并降低置信度。
-            - 修改建议要具体到文件和方法，说明为什么这样改。
-            - 用中文回答。
-            只输出一个 JSON 对象，不要输出其他内容。字段：
-            summary：一句话结论，不超过 60 个字；
-            rootCause：根本原因分析；
-            suggestion：修改建议，Markdown 格式；
-            diff：统一 diff 格式（unified diff）的修改，文件路径用仓库内的路径；给不出具体修改时为空字符串；
-            confidence：high、medium 或 low。""";
 
     private final AiMapper mapper;
     private final AiChatService chatService;
@@ -446,12 +428,10 @@ public class AiDiagnosisService implements DisposableBean {
         update(diagnosis, AiDiagnosis.RUNNING, null, null, null, null, null, null, null, null, null, null, null,
                 null);
         try {
-            AiSettings settings = currentSettings();
-            // loggingx-ai chooses its own models; the provider setting applies to single-model analysis only.
-            AiProvider provider = agentClient.enabled() ? null : provider(settings);
-
+            if (!agentClient.enabled()) {
+                throw new IllegalStateException("loggingx-ai is not configured: set LOGGINGX_AI_AGENT_URL");
+            }
             String commit = null;
-            String repoNote = "未配置代码仓库，只能根据日志分析。";
             List<CodeRef> refs = List.of();
             AiStoreConfig config = mapper.selectStoreConfig(diagnosis.storeId());
             ParsedError parsed = StackTraces.parse(diagnosis.logText());
@@ -463,57 +443,26 @@ public class AiDiagnosisService implements DisposableBean {
                     List<Frame> frames = new ArrayList<>(parsed.appFrames());
                     parsed.frames().stream().filter(frame -> !frames.contains(frame)).forEach(frames::add);
                     refs = repositories.snippets(config.storeId(), frames, CODE_REFS, CODE_CONTEXT, CODE_CHARS);
-                    repoNote = refs.isEmpty() ? "代码仓库里没有找到堆栈对应的文件，只能根据日志分析。" : null;
                 } catch (RepoException e) {
-                    repoNote = "代码仓库同步失败（" + e.getMessage() + "），只能根据日志分析。";
+                    // Analysed from the log alone.
+                    log.warn("AI diagnosis {}: cannot sync the code repository: {}", id, e.getMessage());
                 }
             }
             String store = storeRepository.findById(diagnosis.storeId()).map(LogStore::name).orElse("-");
-            Reply reply;
-            if (provider == null) {
-                AiAgentClient.Result result = agentClient.diagnose(new AiAgentClient.Request(diagnosis.logText(),
-                        diagnosis.storeId(), store, diagnosis.host(), diagnosis.source(), diagnosis.logTime(), commit,
-                        refs));
-                reply = new Reply(AiAgentClient.PROVIDER, result.model(), new Answer(result.summary(),
-                        result.rootCause(), result.suggestion(), result.diff(), confidence(result.confidence())),
-                        result.promptTokens(), result.completionTokens());
-            } else {
-                AiChatReply chat = chatService.chat(new AiChatCommand(provider.id(),
-                        prompt(diagnosis, store, commit, refs, repoNote), SYSTEM_PROMPT, settings.model()));
-                reply = new Reply(chat.provider(), chat.model(), Answer.parse(chat.content()), chat.promptTokens(),
-                        chat.completionTokens());
-            }
-            Answer answer = reply.answer();
+            AiAgentClient.Result result = agentClient.diagnose(new AiAgentClient.Request(diagnosis.logText(),
+                    diagnosis.storeId(), store, diagnosis.host(), diagnosis.source(), diagnosis.logTime(), commit,
+                    refs));
             AiDiagnosis done = update(diagnosis, AiDiagnosis.SUCCESS, commit, JSON.writeValueAsString(refs),
-                    reply.provider(), reply.model(), truncate(answer.summary(), 500), answer.rootCause(),
-                    answer.suggestion(), answer.diff(), answer.confidence(), reply.promptTokens(),
-                    reply.completionTokens(), null);
-            log.info("event=ai.diagnosis.done id={} storeId={} provider={} codeRefs={}", id, diagnosis.storeId(),
-                    reply.provider(), refs.size());
+                    AiAgentClient.PROVIDER, result.model(), truncate(result.summary(), 500), result.rootCause(),
+                    result.suggestion(), result.diff(), confidence(result.confidence()), result.promptTokens(),
+                    result.completionTokens(), null);
+            log.info("event=ai.diagnosis.done id={} storeId={} codeRefs={}", id, diagnosis.storeId(), refs.size());
             notifyDone(done, store);
         } catch (RuntimeException e) {
             log.warn("AI diagnosis {} failed: {}", id, e.getMessage());
             update(diagnosis, AiDiagnosis.FAILED, null, null, null, null, null, null, null, null, null, null, null,
                     truncate(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), 1000));
         }
-    }
-
-    private AiProvider provider(AiSettings settings) {
-        List<AiProvider> available = chatService.providers();
-        if (available.isEmpty()) {
-            throw new IllegalStateException("No AI provider is configured: set LOGGINGX_AI_AGENT_URL, or one of "
-                    + "LOGGINGX_AI_DEEPSEEK_API_KEY, LOGGINGX_AI_OPENAI_API_KEY or LOGGINGX_AI_ANTHROPIC_API_KEY");
-        }
-        return settings.provider() == null ? available.get(0)
-                : AiProvider.fromId(settings.provider()).filter(available::contains).orElseThrow(() ->
-                new IllegalStateException("The AI provider " + settings.provider() + " is not configured"));
-    }
-
-    /**
-     * A model's answer with who gave it and what it cost.
-     */
-    private record Reply(String provider, String model, Answer answer, Integer promptTokens,
-                         Integer completionTokens) {
     }
 
     private static String confidence(String value) {
@@ -531,72 +480,6 @@ public class AiDiagnosisService implements DisposableBean {
                 completionTokens, error, d.createdBy(), d.createdAt(), finished ? Instant.now() : null);
         mapper.updateDiagnosis(updated);
         return updated;
-    }
-
-    static String prompt(AiDiagnosis d, String store, String commit, List<CodeRef> refs, String repoNote) {
-        StringBuilder text = new StringBuilder("## 错误日志\n");
-        text.append("日志库：").append(store).append('\n');
-        if (d.host() != null) {
-            text.append("主机：").append(d.host()).append('\n');
-        }
-        if (d.source() != null) {
-            text.append("来源：").append(d.source()).append('\n');
-        }
-        if (d.logTime() != null) {
-            text.append("时间：").append(DateTimes.format(d.logTime())).append('\n');
-        }
-        text.append("```\n").append(d.logText()).append("\n```\n\n");
-        if (refs.isEmpty()) {
-            text.append("## 相关代码\n").append(repoNote == null ? "没有可用的代码。" : repoNote).append('\n');
-            return text.toString();
-        }
-        text.append("## 相关代码").append(commit == null ? "" : "（提交 " + commit.substring(0, Math.min(10,
-                commit.length())) + "）").append('\n');
-        text.append("每行前是行号，> 标出堆栈指向的行。\n\n");
-        for (CodeRef ref : refs) {
-            text.append("### ").append(ref.path()).append("（").append(ref.frame()).append("）\n```\n");
-            String[] lines = ref.text().split("\n", -1);
-            for (int i = 0; i < lines.length; i++) {
-                int number = ref.startLine() + i;
-                text.append(number == ref.focusLine() ? ">" : " ")
-                        .append(String.format("%5d | ", number)).append(lines[i]).append('\n');
-            }
-            text.append("```\n\n");
-        }
-        return text.toString();
-    }
-
-    /**
-     * The model's answer; a reply that is not the asked-for JSON is kept as the suggestion.
-     */
-    record Answer(String summary, String rootCause, String suggestion, String diff, String confidence) {
-
-        static Answer parse(String content) {
-            String text = content == null ? "" : content.trim();
-            int start = text.indexOf('{');
-            int end = text.lastIndexOf('}');
-            if (start >= 0 && end > start) {
-                try {
-                    JsonNode node = JSON.readTree(text.substring(start, end + 1));
-                    String confidence = node.path("confidence").asString("").toLowerCase(Locale.ROOT);
-                    String diff = node.path("diff").asString("").strip();
-                    return new Answer(node.path("summary").asString("").strip(),
-                            node.path("rootCause").asString("").strip(),
-                            node.path("suggestion").asString("").strip(),
-                            diff.isEmpty() ? null : stripFence(diff),
-                            Set.of("high", "medium", "low").contains(confidence) ? confidence : null);
-                } catch (JacksonException e) {
-                    // Not JSON after all: keep the text.
-                }
-            }
-            String firstLine = text.lines().filter(line -> !line.isBlank()).findFirst().orElse("").strip();
-            return new Answer(firstLine.length() > 120 ? firstLine.substring(0, 120) : firstLine, null, text, null,
-                    null);
-        }
-
-        private static String stripFence(String diff) {
-            return diff.replaceAll("^```\\w*\\n", "").replaceAll("\\n```$", "");
-        }
     }
 
     private void notifyDone(AiDiagnosis d, String store) {

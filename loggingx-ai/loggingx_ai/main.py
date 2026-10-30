@@ -1,4 +1,4 @@
-"""HTTP API that loggingx-java calls to diagnose an error log."""
+"""HTTP API that loggingx-java calls for all of its AI work: diagnosing an error log, and plain chat."""
 
 import json
 import logging
@@ -13,16 +13,17 @@ from pydantic import BaseModel
 
 from loggingx_ai.config import Settings, get_settings
 from loggingx_ai.diagnosis import Diagnoser
-from loggingx_ai.llm import ChatClient, LlmError
-from loggingx_ai.schemas import DiagnoseRequest, DiagnoseResponse
+from loggingx_ai.llm import ChatClient, LlmError, ModelSpec
+from loggingx_ai.schemas import ChatRequest, ChatResponse, DiagnoseRequest, DiagnoseResponse
 
 log = logging.getLogger(__name__)
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = None,
+               client: ChatClient | None = None) -> FastAPI:
     settings = settings or get_settings()
-    client = ChatClient(settings)
+    client = client or ChatClient(settings)
     diagnoser = diagnoser or Diagnoser(client, settings)
 
     app = FastAPI(
@@ -68,6 +69,47 @@ def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = N
                     else:
                         yield _sse("agent", {"agent": node, "output": _public(update)})
             except LlmError as error:
+                yield _sse("error", {"message": str(error)})
+            yield _sse("done", {})
+
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    def chat_spec(payload: ChatRequest) -> ModelSpec:
+        try:
+            return client.chat_spec(payload.provider, payload.model)
+        except (ValueError, LlmError) as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
+
+    @app.post("/api/v1/chat", response_model=ChatResponse, response_model_by_alias=True,
+              dependencies=protected, tags=["chat"])
+    async def chat(payload: ChatRequest) -> ChatResponse:
+        """A single chat turn with one model, for loggingx-java's AI chat and ops assistant."""
+
+        spec = chat_spec(payload)
+        try:
+            return await client.chat(spec, payload.system_prompt, payload.message)
+        except LlmError as error:
+            log.warning("event=chat.failed error=%s", error)
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)) from None
+
+    @app.post("/api/v1/chat/stream", dependencies=protected, tags=["chat"])
+    async def chat_stream(payload: ChatRequest, request: Request) -> StreamingResponse:
+        """SSE: `delta` events with the answer's text, then `result` with the whole answer, or `error`."""
+
+        spec = chat_spec(payload)
+
+        async def events() -> AsyncIterator[str]:
+            try:
+                async for item in client.stream(spec, payload.system_prompt, payload.message):
+                    if await request.is_disconnected():
+                        return
+                    if isinstance(item, ChatResponse):
+                        yield _sse("result", item)
+                    else:
+                        yield _sse("delta", {"content": item})
+            except LlmError as error:
+                log.warning("event=chat.failed error=%s", error)
                 yield _sse("error", {"message": str(error)})
             yield _sse("done", {})
 

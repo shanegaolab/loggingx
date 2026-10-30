@@ -73,7 +73,7 @@ loggingx
 ├── loggingx-java      # 后端：Spring Boot 4.1 / Java 25，Maven 多模块
 │   ├── loggingx-web       # 启动入口和 HTTP 接口
 │   ├── loggingx-biz       # 业务服务（日志、监控、告警、AI、备份）
-│   ├── loggingx-ai        # 基于 Spring AI 的大模型对话
+│   ├── loggingx-ai        # loggingx-ai 服务的客户端
 │   ├── loggingx-auth      # 登录、JWT、安全配置
 │   ├── loggingx-dao       # MySQL（MyBatis）和 ClickHouse 数据访问
 │   ├── loggingx-thirdparty、loggingx-common
@@ -87,7 +87,7 @@ loggingx
 
 | 部分 | 技术 |
 | --- | --- |
-| 后端 | Java 25、Spring Boot 4.1、Spring Security 7、Spring AI 2.0、MyBatis、JJWT |
+| 后端 | Java 25、Spring Boot 4.1、Spring Security 7、MyBatis、JJWT |
 | 存储 | ClickHouse（日志、主机指标）、MySQL（账号、配置）、Redis |
 | 采集 | Vector |
 | 前端 | Vue 3.5、TypeScript、Element Plus、Vite 7、Pinia、ECharts 6、Tailwind CSS 4 |
@@ -132,8 +132,7 @@ pnpm dev
 | `LOGGINGX_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
 | `LOGGINGX_CLICKHOUSE_URL` / `_USERNAME` / `_PASSWORD` | ClickHouse；`LOGGINGX_LOG_STORAGE=memory` 时日志只保存在内存 |
 | `LOGGINGX_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | 没有超级管理员时自动创建的第一个超级管理员 |
-| `LOGGINGX_AI_DEEPSEEK_API_KEY`、`LOGGINGX_AI_OPENAI_API_KEY`、`LOGGINGX_AI_ANTHROPIC_API_KEY` | AI 模型；填写了 Key 的模型才会启用 |
-| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | 把 AI 诊断交给 [loggingx-ai](loggingx-ai/README.md) 多 agent 服务（DeepSeek、通义千问的 Key 在那里配置） |
+| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | [loggingx-ai](loggingx-ai/README.md) 服务的地址，所有模型调用（AI 对话、智能问答、多 agent 诊断）都由它完成，DeepSeek、通义千问的 Key 在那里配置；默认 `http://localhost:8001` |
 | `LOGGINGX_BACKUP_SECRET` | 加密保存的密码和密钥、为下载链接签名（默认同 JWT 密钥） |
 | `LOGGINGX_KAFKA_ENABLED` / `_BOOTSTRAP_SERVERS` / `_TOPICS` | 可选的 Kafka 日志上报 |
 

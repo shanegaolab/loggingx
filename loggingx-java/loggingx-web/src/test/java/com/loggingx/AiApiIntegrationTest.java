@@ -23,44 +23,50 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Only DeepSeek is configured, pointing at a local server that answers in DeepSeek's (OpenAI-compatible) format.
- * It rejects any request whose message contains {@value #FAIL}, as the real API does a wrong key.
+ * Against a fake loggingx-ai with only DeepSeek configured. It fails any model call whose message contains
+ * {@value #FAIL}, as it does when the provider rejects the API key.
  */
 class AiApiIntegrationTest extends ApiIntegrationTest {
 
     private static final String FAIL = "please fail";
     private static final String SLOW = "please hold back";
-    private static final String DEEPSEEK_REPLY = """
-            {"id":"ds-1","object":"chat.completion","created":1,"model":"deepseek-v4-flash",
-             "choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
-             "usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}""";
-    private static final String DEEPSEEK_STREAM = """
-            data: {"id":"d1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"po"},"finish_reason":null}]}
+    private static final String REPLY = """
+            {"provider":"deepseek","model":"deepseek-v4-flash","content":"pong","promptTokens":7,"completionTokens":1}""";
+    private static final String STREAM = """
+            event: delta
+            data: {"content": "po"}
 
-            data: {"id":"d1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"ng"},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}
+            event: delta
+            data: {"content": "ng"}
 
-            data: [DONE]
+            event: result
+            data: %s
+
+            event: done
+            data: {}
+
+            """.formatted(REPLY);
+    private static final String STREAM_FAILED = """
+            event: error
+            data: {"message": "deepseek:deepseek-v4-flash 调用失败：Authentication Fails"}
+
+            event: done
+            data: {}
 
             """;
-    private static final String REJECTED = """
-            {"error":{"message":"Authentication Fails","type":"authentication_error"}}""";
 
-    private static final HttpServer DEEPSEEK = startDeepSeek();
+    private static final HttpServer LOGGINGX_AI = startLoggingxAi();
     private static volatile CountDownLatch firstChunkReceived = new CountDownLatch(1);
     private static volatile boolean heldBackChunkReleased;
 
     @DynamicPropertySource
     static void aiProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.ai.openai.api-key", () -> "");
-        registry.add("spring.ai.anthropic.api-key", () -> "");
-        registry.add("spring.ai.deepseek.api-key", () -> "test-key");
-        registry.add("spring.ai.deepseek.base-url",
-                () -> "http://127.0.0.1:" + DEEPSEEK.getAddress().getPort());
+        registry.add("loggingx.ai.agent.url", () -> "http://127.0.0.1:" + LOGGINGX_AI.getAddress().getPort());
     }
 
     @AfterAll
-    static void stopDeepSeek() {
-        DEEPSEEK.stop(0);
+    static void stopLoggingxAi() {
+        LOGGINGX_AI.stop(0);
     }
 
     @Test
@@ -85,7 +91,7 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
     @Test
     void rejectsUnconfiguredProvider() throws Exception {
         HttpResponse<String> response = send("POST", "/api/ai/chat", login("user", DEMO_PASSWORD),
-                "{\"provider\":\"openai\",\"message\":\"ping\"}");
+                "{\"provider\":\"qwen\",\"message\":\"ping\"}");
 
         assertEquals(400, response.statusCode(), response.body());
         assertTrue(response.body().contains("not configured"), response.body());
@@ -169,7 +175,7 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
 
         assertEquals(200, response.statusCode(), response.body());
         String body = response.body().replace("\r\n", "\n");
-        assertTrue(body.startsWith("event:error\ndata:{\"code\":502,\"msg\":\"AI provider 'deepseek' request failed"),
+        assertTrue(body.startsWith("event:error\ndata:{\"code\":502,\"msg\":\"AI request failed: deepseek:deepseek-v4-flash"),
                 body);
         assertTrue(!body.contains("event:done"), body);
     }
@@ -179,7 +185,7 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
         String token = login("user", DEMO_PASSWORD);
 
         HttpResponse<String> unconfigured = send("POST", "/api/ai/chat/stream", token,
-                "{\"provider\":\"openai\",\"message\":\"ping\"}", "text/event-stream");
+                "{\"provider\":\"qwen\",\"message\":\"ping\"}", "text/event-stream");
         assertEquals(400, unconfigured.statusCode(), unconfigured.body());
         assertTrue(unconfigured.body().contains("not configured"), unconfigured.body());
 
@@ -197,24 +203,26 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
         assertEquals(401, response.statusCode(), response.body());
     }
 
-    private static HttpServer startDeepSeek() {
+    private static HttpServer startLoggingxAi() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/chat/completions", exchange -> {
+            server.createContext("/health", exchange -> respond(exchange, 200, "application/json",
+                    "{\"status\":\"ok\",\"providers\":[\"deepseek\"]}"));
+            server.createContext("/api/v1/chat", exchange -> {
                 String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                if (request.contains(SLOW)) {
+                boolean stream = exchange.getRequestURI().getPath().endsWith("/stream");
+                if (!request.contains("\"provider\":\"deepseek\"") && !request.contains("\"provider\":null")) {
+                    respond(exchange, 400, "application/json", "{\"detail\":\"AI provider is not configured\"}");
+                } else if (stream && request.contains(SLOW)) {
                     streamSlowly(exchange);
-                    return;
+                } else if (stream) {
+                    respond(exchange, 200, "text/event-stream", request.contains(FAIL) ? STREAM_FAILED : STREAM);
+                } else if (request.contains(FAIL)) {
+                    respond(exchange, 502, "application/json",
+                            "{\"detail\":\"deepseek:deepseek-v4-flash 调用失败：Authentication Fails\"}");
+                } else {
+                    respond(exchange, 200, "application/json", REPLY);
                 }
-                boolean stream = request.contains("\"stream\":true");
-                int status = request.contains(FAIL) ? 401 : 200;
-                String reply = status == 401 ? REJECTED : stream ? DEEPSEEK_STREAM : DEEPSEEK_REPLY;
-                byte[] body = reply.getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type",
-                        status == 200 && stream ? "text/event-stream" : "application/json");
-                exchange.sendResponseHeaders(status, body.length);
-                exchange.getResponseBody().write(body);
-                exchange.close();
             });
             server.start();
             return server;
@@ -223,8 +231,16 @@ class AiApiIntegrationTest extends ApiIntegrationTest {
         }
     }
 
+    private static void respond(HttpExchange exchange, int status, String type, String text) throws IOException {
+        byte[] body = text.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", type);
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
+    }
+
     private static void streamSlowly(HttpExchange exchange) throws IOException {
-        String[] chunks = DEEPSEEK_STREAM.split("(?<=\n\n)", 2);
+        String[] chunks = STREAM.split("(?<=\n\n)", 2);
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, 0);
         OutputStream out = exchange.getResponseBody();

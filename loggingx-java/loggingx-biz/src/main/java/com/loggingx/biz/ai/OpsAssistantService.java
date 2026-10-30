@@ -410,8 +410,8 @@ public class OpsAssistantService {
         }
         List<AiProvider> available = chatService.providers();
         if (available.isEmpty()) {
-            throw new BadRequestException("No AI provider is configured: set one of LOGGINGX_AI_DEEPSEEK_API_KEY, "
-                    + "LOGGINGX_AI_OPENAI_API_KEY or LOGGINGX_AI_ANTHROPIC_API_KEY");
+            throw new BadRequestException("No AI provider is available: start loggingx-ai (LOGGINGX_AI_AGENT_URL) "
+                    + "with LOGGINGX_AI_DEEPSEEK_API_KEY or LOGGINGX_AI_QWEN_API_KEY set");
         }
         AiSettings settings = mapper.selectSettings();
         AiProvider provider = settings == null || settings.provider() == null ? available.get(0)

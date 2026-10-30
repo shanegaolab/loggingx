@@ -20,8 +20,7 @@ import java.util.Map;
 
 /**
  * Client of the loggingx-ai service, which diagnoses an error with several agents (log analysis, code analysis, root
- * cause, fix and review on DeepSeek and Qwen) instead of a single prompt. Enabled when
- * {@code loggingx.ai.agent.url} is set.
+ * cause, fix and review on DeepSeek and Qwen). Disabled when {@code loggingx.ai.agent.url} is empty.
  */
 @Component
 public class AiAgentClient {
@@ -34,7 +33,9 @@ public class AiAgentClient {
     private final String url;
     private final String apiKey;
     private final Duration timeout;
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    // Uvicorn rejects the h2c upgrade that the client would otherwise attempt on plain HTTP.
+    private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(10)).build();
 
     /**
      * @param url     the service's address, e.g. {@code http://localhost:8001}; empty disables it

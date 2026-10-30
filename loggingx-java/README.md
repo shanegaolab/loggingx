@@ -13,7 +13,7 @@ loggingx-java
 ├── loggingx-thirdparty   # 外部系统适配器
 ├── loggingx-auth         # 注册、登录、JWT 与安全配置
 ├── loggingx-biz          # 用户及日志分析业务服务
-├── loggingx-ai           # 基于 Spring AI 的大模型对话（OpenAI、Claude、DeepSeek）
+├── loggingx-ai           # loggingx-ai 服务的客户端（AI 对话，DeepSeek、通义千问）
 └── loggingx-web          # Spring Boot 启动入口和 HTTP API
 ```
 
@@ -170,23 +170,15 @@ LOGGINGX_TEST_CLICKHOUSE_URL=jdbc:clickhouse://host:8123/loggingx LOGGINGX_TEST_
 
 ### AI 大模型
 
-`loggingx-ai` 基于 Spring AI 2.0 接入 OpenAI、Anthropic Claude 和 DeepSeek。设置了 API Key 的提供方才会启用（`AiConfiguration`），一个都不设也能正常启动，此时 `/api/ai/providers` 返回空列表：
+后端不直接调用任何大模型：AI 对话、智能问答和 AI 诊断都交给 Python 的 [loggingx-ai](../loggingx-ai/README.md) 服务（`loggingx-ai` 模块的 `AiChatService` 和 `loggingx-biz` 的 `AiAgentClient` 是它的客户端）。提供方是 DeepSeek（`deepseek`）和通义千问（`qwen`），API Key、默认模型和地址都在 loggingx-ai 的 `.env` 里配置；`/api/ai/providers` 返回它已配置的提供方，它没启动时为空列表。
 
-| 提供方 | API Key | 默认模型（`_MODEL` 覆盖） | 默认地址（`_BASE_URL` 覆盖） |
-| --- | --- | --- | --- |
-| `openai` | `LOGGINGX_AI_OPENAI_API_KEY` | `gpt-5-mini` | `https://api.openai.com/v1` |
-| `anthropic` | `LOGGINGX_AI_ANTHROPIC_API_KEY` | `claude-haiku-4-5` | `https://api.anthropic.com` |
-| `deepseek` | `LOGGINGX_AI_DEEPSEEK_API_KEY` | `deepseek-v4-flash` | `https://api.deepseek.com` |
+| 变量 | 说明 |
+| --- | --- |
+| `LOGGINGX_AI_AGENT_URL` | loggingx-ai 的地址，默认 `http://localhost:8001` |
+| `LOGGINGX_AI_AGENT_API_KEY` | 与 loggingx-ai 的 `LOGGINGX_AI_API_KEY` 一致，以 `X-API-Key` 请求头发送 |
+| `LOGGINGX_AI_AGENT_TIMEOUT` | 单次回答或诊断的超时，默认 `5m` |
 
-其余参数（温度、超时、重试等）使用 Spring AI 标准属性 `spring.ai.openai.*`、`spring.ai.anthropic.*`、`spring.ai.deepseek.*`。`_BASE_URL` 可指向兼容的网关或中转服务。
-
-OpenAI 和 Anthropic 的 SDK 遵循 JVM 代理设置，在国内访问时需加 `-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897`（Tomcat 写在 `setenv` 的 `CATALINA_OPTS`）；DeepSeek 直连即可。注意：OpenAI 会断开来自其不支持地区（含香港）的连接，代理节点需选美国、日本、新加坡等地区。
-
-调用失败（Key 无效、限流、模型不存在、网络错误）返回 502，`msg` 中带有提供方的原始错误信息。联调真实接口可运行默认跳过的 `AiProvidersLiveTest`，它会对每个已设置 Key 的提供方各发一次普通请求和流式请求：
-
-```shell
-LOGGINGX_AI_LIVE=true LOGGINGX_AI_DEEPSEEK_API_KEY=sk-... mvn test -pl loggingx-ai -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=AiProvidersLiveTest -DargLine="-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897"
-```
+请求体里的 `provider`、`model` 可留空，此时用 loggingx-ai 第一个已配置的提供方和它的默认模型。提供方未配置返回 400；模型调用失败（Key 无效、限流、模型不存在）或 loggingx-ai 连不上返回 502，`msg` 中带有原始错误信息。
 
 #### 流式输出
 
@@ -203,7 +195,7 @@ event:done
 data:{"provider":"deepseek","model":"deepseek-v4-flash","content":"你好","promptTokens":7,"completionTokens":1}
 ```
 
-- `message`：增量文本；`done`：结束，带完整回答、模型和 token 数（提供方未返回时为 `null`；Spring AI 的 DeepSeek 流式请求不带 `stream_options.include_usage`，token 数可能为 `null`）。
+- `message`：增量文本；`done`：结束，带完整回答、模型和 token 数（提供方未返回时为 `null`）。
 - 请求无效（未登录、参数校验失败、提供方未配置）时不会开始推送，按普通接口返回 JSON 和对应状态码。
 - 推送开始后状态码已是 200，提供方报错时发送 `event:error`、`data:{"code":502,"msg":"..."}` 后结束，不再发送 `done`。
 - 浏览器 `EventSource` 只支持 GET 且不能带 `Authorization` 头，前端请用 `fetch` 读取响应流（或 `@microsoft/fetch-event-source` 等库）。

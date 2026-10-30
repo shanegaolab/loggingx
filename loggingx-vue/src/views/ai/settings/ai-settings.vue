@@ -9,21 +9,21 @@
         </div>
       </header>
       <ElAlert
-        v-if="settings?.agent"
-        type="success"
-        :closable="false"
-        show-icon
-        title="AI 诊断由 loggingx-ai 多 agent 服务完成"
-        description="日志分析、代码分析、根因、修复和评审分别由 DeepSeek、通义千问完成，模型在 loggingx-ai 中配置；下面的提供方和模型只用于智能问答。"
-        class="mb-4"
-      />
-      <ElAlert
-        v-else-if="settings && !settings.providers.length"
+        v-if="settings && !settings.providers.length"
         type="warning"
         :closable="false"
         show-icon
         title="还没有可用的 AI 提供方"
-        description="在 LoggingX 后端设置 LOGGINGX_AI_DEEPSEEK_API_KEY、LOGGINGX_AI_OPENAI_API_KEY 或 LOGGINGX_AI_ANTHROPIC_API_KEY 后重启。"
+        description="所有 AI 功能都由 loggingx-ai 服务完成：启动它（后端用 LOGGINGX_AI_AGENT_URL 指向它，默认 http://localhost:8001），并在它的 .env 里设置 LOGGINGX_AI_DEEPSEEK_API_KEY 或 LOGGINGX_AI_QWEN_API_KEY。"
+        class="mb-4"
+      />
+      <ElAlert
+        v-else-if="settings?.agent"
+        type="success"
+        :closable="false"
+        show-icon
+        title="AI 诊断由 loggingx-ai 多 agent 服务完成"
+        description="日志分析、代码分析、根因、修复和评审分别由 DeepSeek、通义千问完成，模型在 loggingx-ai 中配置；下面的提供方和模型只用于智能问答和 AI 对话。"
         class="mb-4"
       />
       <ElForm v-if="settings" label-width="96px" class="form">

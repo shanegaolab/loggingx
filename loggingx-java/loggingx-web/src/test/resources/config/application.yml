@@ -20,3 +20,7 @@ loggingx:
   monitor:
     # Tests evaluate alerts themselves; the scheduled evaluation would race with them.
     alert-initial-delay: 3600000
+  # No loggingx-ai service unless a test starts a fake one, even if one is running on this machine.
+  ai:
+    agent:
+      url: ""
