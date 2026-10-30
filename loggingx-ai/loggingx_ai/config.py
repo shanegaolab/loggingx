@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     root_cause_model: str = "deepseek:deepseek-chat"
     fixer_model: str = "qwen:qwen3-coder-plus"
     reviewer_model: str = "qwen:qwen-plus"
+    # Default model of the chat API (the assistant, and loggingx-java's other AI features).
+    chat_model: str = "deepseek:deepseek-chat"
 
     temperature: float = Field(default=0.2, ge=0, le=2)
     request_timeout: float = Field(default=120, ge=5, le=600)

@@ -38,8 +38,8 @@ LoggingX puts the whole log workflow into one system that runs on your own serve
 **AI ops**
 - Ask questions in plain language; answers are retrieved from your knowledge base, past diagnoses, error groups, alerts, error logs and code, with numbered sources (RAG).
 - AI diagnosis: new error types, log alerts or hand-picked logs are analysed together with the source code their stack traces point to, producing a cause, a fix suggestion and a diff.
-- Multi-agent diagnosis (optional `loggingx-ai` service, LangGraph): log analysis and code analysis run in parallel, then root cause, fix and review agents on DeepSeek and Qwen; a rejected fix goes back for another round.
-- Errors grouped by fingerprint; providers: DeepSeek, Qwen (Tongyi Qianwen), OpenAI, Anthropic Claude.
+- Multi-agent diagnosis (`loggingx-ai` service, LangGraph): log analysis and code analysis run in parallel, then root cause, fix and review agents on DeepSeek and Qwen; a rejected fix goes back for another round.
+- Errors grouped by fingerprint; models: DeepSeek and Qwen (Tongyi Qianwen), each the fallback of the other. All AI features go through the Python `loggingx-ai` service.
 
 **Backups**
 - Daily gzip-compressed NDJSON archives per log store in any S3-compatible storage (MinIO, Aliyun OSS, Tencent COS, AWS S3).
@@ -73,25 +73,25 @@ loggingx
 ├── loggingx-java      # Backend: Spring Boot 4.1 / Java 25, multi-module Maven project
 │   ├── loggingx-web       # entry point and HTTP API
 │   ├── loggingx-biz       # business services (logs, monitoring, alerting, AI, backups)
-│   ├── loggingx-ai        # chat models via Spring AI
+│   ├── loggingx-ai        # client of the loggingx-ai service
 │   ├── loggingx-auth      # login, JWT, security
 │   ├── loggingx-dao       # MySQL (MyBatis) and ClickHouse repositories
 │   ├── loggingx-thirdparty, loggingx-common
 │   └── docs/              # agent, alerting, AI diagnosis, backups
 ├── loggingx-vue       # Console: Vue 3 + TypeScript + Element Plus + Vite
 │   └── promo/             # single-file product page
-└── loggingx-ai        # Multi-agent AI diagnosis: Python 3.14, FastAPI, LangGraph, DeepSeek + Qwen
+└── loggingx-ai        # All AI (chat, assistant, multi-agent diagnosis): Python 3.14, FastAPI, LangGraph, DeepSeek + Qwen
 ```
 
 ## Tech stack
 
 | Part | Stack |
 | --- | --- |
-| Backend | Java 25, Spring Boot 4.1, Spring Security 7, Spring AI 2.0, MyBatis, JJWT |
+| Backend | Java 25, Spring Boot 4.1, Spring Security 7, MyBatis, JJWT |
 | Storage | ClickHouse (logs, host metrics), MySQL (accounts, settings), Redis |
 | Agent | Vector |
 | Frontend | Vue 3.5, TypeScript, Element Plus, Vite 7, Pinia, ECharts 6, Tailwind CSS 4 |
-| AI diagnosis | Python 3.14, FastAPI, LangGraph, LangChain, DeepSeek, Qwen (DashScope) |
+| AI | Python 3.14, FastAPI, LangGraph, LangChain, DeepSeek, Qwen (DashScope) |
 
 ## Quick start
 
@@ -132,8 +132,7 @@ All settings can be overridden with `LOGGINGX_*` environment variables, or with 
 | `LOGGINGX_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
 | `LOGGINGX_CLICKHOUSE_URL` / `_USERNAME` / `_PASSWORD` | ClickHouse; `LOGGINGX_LOG_STORAGE=memory` keeps logs in memory instead |
 | `LOGGINGX_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | First super administrator, created when none exists |
-| `LOGGINGX_AI_DEEPSEEK_API_KEY`, `LOGGINGX_AI_OPENAI_API_KEY`, `LOGGINGX_AI_ANTHROPIC_API_KEY` | AI providers; a provider is enabled when its key is set |
-| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | Hand AI diagnosis to the [loggingx-ai](loggingx-ai/README.md) multi-agent service (DeepSeek and Qwen keys are set there) |
+| `LOGGINGX_AI_URL` / `_API_KEY` / `_TIMEOUT` | The [loggingx-ai](loggingx-ai/README.md) service that every AI feature goes through (DeepSeek and Qwen keys are set there); AI is off when unset |
 | `LOGGINGX_BACKUP_SECRET` | Encrypts stored passwords and keys and signs download links (defaults to the JWT secret) |
 | `LOGGINGX_KAFKA_ENABLED` / `_BOOTSTRAP_SERVERS` / `_TOPICS` | Optional Kafka ingestion |
 
