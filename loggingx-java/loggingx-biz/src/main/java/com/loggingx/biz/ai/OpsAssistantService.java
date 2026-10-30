@@ -78,7 +78,8 @@ public class OpsAssistantService {
 
     static final String SYSTEM_PROMPT = """
             你是 LoggingX 的运维助手，帮助工程师排查线上问题、查找错误原因。
-            只根据「参考资料」回答：资料里有的直接引用，并在句末用 [编号] 标出来源，例如 [2]；资料不足以回答时，明确说出缺少什么，
+            只根据「参考资料」和「用户上传的文件」回答：参考资料里有的直接引用，并在句末用 [编号] 标出来源，例如 [2]；
+            引用上传的文件时写出文件名，例如（见 app.log）；资料不足以回答时，明确说出缺少什么，
             并建议接下来去查哪些日志、主机或配置，不要编造资料里没有的事实。
             回答用中文，使用 Markdown：先给结论，再列依据和建议的处理步骤；涉及代码时指出文件和方法。""";
 
@@ -386,6 +387,18 @@ public class OpsAssistantService {
     }
 
     /**
+     * A text file the user attached to the question, such as a log excerpt, stack trace or configuration.
+     *
+     * @param name    the file's name, shown to the model
+     * @param content the file's text, at most {@value #MAX_ATTACHMENT_CHARS} characters
+     */
+    public record Attachment(String name, String content) {
+    }
+
+    static final int MAX_ATTACHMENTS = 3;
+    static final int MAX_ATTACHMENT_CHARS = 20000;
+
+    /**
      * The answer as it is generated: the sources first, then the model's events.
      */
     public sealed interface AskEvent {
@@ -398,15 +411,29 @@ public class OpsAssistantService {
     }
 
     /**
-     * @throws BadRequestException when the question is empty or no AI provider is configured
+     * @param attachments text files attached to the question; they are searched with the question and given to the
+     *                    model in full
+     * @throws BadRequestException when the question is empty, the attachments are too many or too long, or no AI
+     *                             provider is configured
      */
-    public Flux<AskEvent> ask(String question, Long storeId, int hours, List<Turn> history, Scope scope) {
+    public Flux<AskEvent> ask(String question, Long storeId, int hours, List<Turn> history,
+                              List<Attachment> attachments, Scope scope) {
         String clean = question == null ? "" : question.trim();
         if (clean.isEmpty()) {
             throw new BadRequestException("Ask a question");
         }
         if (clean.length() > 2000) {
             throw new BadRequestException("The question must be at most 2000 characters");
+        }
+        List<Attachment> files = attachments == null ? List.of()
+                : attachments.stream().filter(file -> file != null && file.content() != null
+                        && !file.content().isBlank()).toList();
+        if (files.size() > MAX_ATTACHMENTS) {
+            throw new BadRequestException("Attach at most " + MAX_ATTACHMENTS + " files");
+        }
+        if (files.stream().anyMatch(file -> file.content().length() > MAX_ATTACHMENT_CHARS)) {
+            throw new BadRequestException("Each attached file must be at most " + MAX_ATTACHMENT_CHARS
+                    + " characters");
         }
         List<AiProvider> available = chatService.providers();
         if (available.isEmpty()) {
@@ -416,14 +443,17 @@ public class OpsAssistantService {
         AiSettings settings = mapper.selectSettings();
         AiProvider provider = settings == null || settings.provider() == null ? available.get(0)
                 : AiProvider.fromId(settings.provider()).filter(available::contains).orElse(available.get(0));
-        Retrieval retrieval = retrieve(clean, storeId, hours, scope);
-        String prompt = prompt(clean, retrieval, history);
+        // The start of each file (an exception's name, the failing class) helps find related material.
+        StringBuilder search = new StringBuilder(clean);
+        files.forEach(file -> search.append('\n').append(head(file.content(), 1500)));
+        Retrieval retrieval = retrieve(search.toString(), storeId, hours, scope);
+        String prompt = prompt(clean, retrieval, history, files);
         return Flux.concat(Flux.just(new AskEvent.Sources(retrieval.sources())),
                 chatService.stream(new AiChatCommand(provider.id(), prompt, SYSTEM_PROMPT,
                         settings == null ? null : settings.model())).map(AskEvent.Model::new));
     }
 
-    static String prompt(String question, Retrieval retrieval, List<Turn> history) {
+    static String prompt(String question, Retrieval retrieval, List<Turn> history, List<Attachment> attachments) {
         StringBuilder text = new StringBuilder();
         if (history != null && !history.isEmpty()) {
             text.append("## 之前的对话\n");
@@ -436,6 +466,13 @@ public class OpsAssistantService {
         }
         text.append("## 参考资料\n");
         text.append(retrieval.materials().isBlank() ? "（没有找到相关资料）\n" : retrieval.materials());
+        if (attachments != null && !attachments.isEmpty()) {
+            text.append("\n## 用户上传的文件\n");
+            for (Attachment file : attachments) {
+                text.append("### ").append(head(nonNull(file.name(), "未命名文件"), 200)).append("\n```\n")
+                        .append(file.content().strip()).append("\n```\n");
+            }
+        }
         text.append("\n## 问题\n").append(question).append('\n');
         return text.toString();
     }

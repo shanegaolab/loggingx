@@ -153,6 +153,7 @@ export interface AskParams {
   storeId?: number
   hours: number
   history: Api.AiOps.Turn[]
+  attachments?: Api.AiOps.Attachment[]
 }
 
 /**

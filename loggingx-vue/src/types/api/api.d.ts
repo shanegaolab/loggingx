@@ -730,6 +730,12 @@ declare namespace Api {
       role: 'user' | 'assistant'
       content: string
     }
+
+    /** 随问题上传的文本文件（日志片段、堆栈、配置等），content 最多 20000 字 */
+    interface Attachment {
+      name: string
+      content: string
+    }
   }
 
   /** 顶栏通知 */

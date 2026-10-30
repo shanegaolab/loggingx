@@ -3,6 +3,7 @@ package com.loggingx.web.ai;
 import com.loggingx.ai.AiChatStreamEvent;
 import com.loggingx.biz.ai.OpsAssistantService;
 import com.loggingx.biz.ai.OpsAssistantService.AskEvent;
+import com.loggingx.biz.ai.OpsAssistantService.Attachment;
 import com.loggingx.biz.ai.OpsAssistantService.Source;
 import com.loggingx.biz.ai.OpsAssistantService.Turn;
 import com.loggingx.biz.permission.StoreAccessService;
@@ -126,11 +127,13 @@ public class OpsAssistantController {
     // ---------- questions ----------
 
     /**
-     * @param storeId the store asked about, or none for every store the user may access
-     * @param hours   how far back logs and alerts are searched; 24 by default
-     * @param history earlier turns of the conversation, oldest first
+     * @param storeId     the store asked about, or none for every store the user may access
+     * @param hours       how far back logs and alerts are searched; 24 by default
+     * @param history     earlier turns of the conversation, oldest first
+     * @param attachments text files attached to the question, at most three
      */
-    public record AskRequest(String question, Long storeId, Integer hours, List<Turn> history) {
+    public record AskRequest(String question, Long storeId, Integer hours, List<Turn> history,
+                             List<Attachment> attachments) {
 
         int range() {
             return hours == null ? 24 : hours;
@@ -156,7 +159,7 @@ public class OpsAssistantController {
     @PreAuthorize(CHAT)
     public Flux<ServerSentEvent<Object>> ask(@RequestBody AskRequest request, Authentication authentication) {
         return service.ask(request.question(), request.storeId(), request.range(), request.history(),
-                        storeAccessService.scopeOf(authentication.getName()))
+                        request.attachments(), storeAccessService.scopeOf(authentication.getName()))
                 .map(OpsAssistantController::toEvent)
                 .onErrorResume(exception -> Flux.just(errorEvent(exception)));
     }
