@@ -4,8 +4,10 @@
     <div ref="scrollRef" class="chat__scroll">
       <div class="chat__column">
         <div v-if="!turns.length" class="welcome">
-          <div class="welcome__icon"><LogxSvgIcon icon="ri:robot-2-line" /></div>
-          <div class="welcome__title">问一问线上发生了什么</div>
+          <div class="welcome__icon"><LogxSvgIcon icon="ri:sparkling-2-fill" /></div>
+          <div class="welcome__title">
+            问一问<span class="welcome__accent">线上</span>发生了什么
+          </div>
           <p class="welcome__text">
             AI 会先在知识库、历史 AI
             诊断、错误归类、告警和所选时间范围内的错误日志里查找相关资料，再根据资料回答，并用
@@ -21,8 +23,9 @@
               class="example"
               @click="ask(example.text)"
             >
-              <LogxSvgIcon :icon="example.icon" class="example__icon" />
-              <span>{{ example.text }}</span>
+              <span class="example__icon"><LogxSvgIcon :icon="example.icon" /></span>
+              <span class="example__text">{{ example.text }}</span>
+              <LogxSvgIcon icon="ri:arrow-right-up-line" class="example__go" />
             </button>
           </div>
         </div>
@@ -38,7 +41,7 @@
             </div>
           </div>
           <div class="reply">
-            <div class="reply__avatar"><LogxSvgIcon icon="ri:robot-2-line" /></div>
+            <div class="reply__avatar"><LogxSvgIcon icon="ri:sparkling-2-fill" /></div>
             <div class="answer">
               <div v-if="turn.error" class="answer__error">
                 <LogxSvgIcon icon="ri:error-warning-line" /> {{ turn.error }}
@@ -47,12 +50,15 @@
               <div
                 v-else-if="turn.answer"
                 class="md"
+                :class="{ 'md--streaming': streaming && index === turns.length - 1 }"
                 @click="onCite($event, turn)"
                 v-html="render(turn.answer)"
               ></div>
               <div v-else class="thinking">
-                <LogxSvgIcon icon="ri:loader-4-line" class="spin" />
-                {{ turn.sources ? '正在根据资料回答…' : '正在查找相关资料…' }}
+                <span class="thinking__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="thinking__text">{{
+                  turn.sources ? '正在根据资料回答…' : '正在查找相关资料…'
+                }}</span>
               </div>
 
               <div v-if="turn.sources?.length" class="sources">
@@ -493,6 +499,23 @@
     --chat-radius: calc(var(--custom-radius, 8px) + 4px);
     --chat-width: 860px;
 
+    /* 主色渐变：图标、头像、用户气泡、发送按钮共用 */
+    --chat-gradient: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--logx-primary) 72%, #fff) 0%,
+      var(--logx-primary) 100%
+    );
+    --chat-glow: color-mix(in srgb, var(--logx-primary) 45%, transparent);
+
+    /* 比卡片略深（亮色）或略亮（暗色）的底色：示例、资料列表、代码块用 */
+    --chat-surface: color-mix(in srgb, var(--logx-gray-900) 3%, var(--default-box-color));
+    --chat-surface-strong: color-mix(in srgb, var(--logx-gray-900) 7%, var(--default-box-color));
+
+    /* 卡片的两层阴影：贴边的细影 + 柔和的远影，让卡片浮在背景上 */
+    --chat-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 8px 24px -14px rgb(0 0 0 / 16%);
+    --chat-shadow-hover: 0 1px 2px rgb(0 0 0 / 4%), 0 14px 32px -14px rgb(0 0 0 / 22%);
+
+    position: relative;
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -503,47 +526,102 @@
   .chat__scroll {
     flex: 1;
     min-height: 0;
-    padding: 8px 4px;
+    padding: 8px 4px 24px;
     overflow-y: auto;
+
+    /* 上下边缘淡出，内容滚到输入框后面时不会生硬截断 */
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 28px),
+      transparent 100%
+    );
   }
 
   .chat__column {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 28px;
     width: 100%;
     max-width: var(--chat-width);
     margin: 0 auto;
   }
 
+  /* ---------- 开场 ---------- */
+
   .welcome {
-    margin: 40px auto 0;
+    position: relative;
+    margin: 48px auto 0;
     text-align: center;
+  }
+
+  /* 标题后面一团很淡的主色光晕 */
+  .welcome::before {
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    z-index: -1;
+    width: min(620px, 100%);
+    height: 280px;
+    pointer-events: none;
+    content: '';
+    background: radial-gradient(
+      closest-side,
+      color-mix(in srgb, var(--logx-primary) 14%, transparent),
+      transparent
+    );
+    transform: translateX(-50%);
+  }
+
+  .welcome > * {
+    animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .welcome > :nth-child(2) {
+    animation-delay: 0.06s;
+  }
+
+  .welcome > :nth-child(3) {
+    animation-delay: 0.12s;
+  }
+
+  .welcome > :nth-child(4) {
+    animation-delay: 0.18s;
   }
 
   .welcome__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 52px;
-    height: 52px;
-    font-size: 26px;
-    color: var(--logx-primary);
-    background: color-mix(in srgb, var(--logx-primary) 10%, transparent);
-    border-radius: var(--chat-radius);
+    width: 56px;
+    height: 56px;
+    font-size: 28px;
+    color: #fff;
+    background: var(--chat-gradient);
+    border-radius: calc(var(--chat-radius) + 4px);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 35%),
+      0 10px 28px -8px var(--chat-glow);
   }
 
   .welcome__title {
-    margin-top: 16px;
-    font-size: 24px;
+    margin-top: 20px;
+    font-size: 28px;
     font-weight: 600;
     color: var(--logx-gray-900);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+  }
+
+  .welcome__accent {
+    color: transparent;
+    background: var(--chat-gradient);
+    background-clip: text;
   }
 
   .welcome__text {
-    max-width: 680px;
-    margin: 10px auto 28px;
+    max-width: 640px;
+    margin: 12px auto 32px;
     font-size: 14px;
     line-height: 1.8;
     color: var(--logx-gray-600);
@@ -556,43 +634,88 @@
   }
 
   .example {
+    position: relative;
     display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    min-height: 52px;
-    padding: 14px 16px;
+    gap: 12px;
+    align-items: center;
+    min-height: 64px;
+    padding: 12px 36px 12px 14px;
     font: inherit;
     font-size: 13px;
     line-height: 1.6;
     color: var(--logx-gray-800);
     text-align: left;
     cursor: pointer;
-    background: var(--default-box-color);
-    border: 1px solid var(--default-border);
+    background: linear-gradient(180deg, var(--default-box-color), var(--chat-surface));
+    border: 1px solid var(--logx-card-border);
     border-radius: var(--chat-radius);
+    box-shadow: var(--chat-shadow);
     transition:
-      border-color 0.2s,
-      box-shadow 0.2s;
+      transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 0.25s,
+      border-color 0.25s;
   }
 
   .example:hover,
   .example:focus-visible {
-    border-color: color-mix(in srgb, var(--logx-primary) 45%, transparent);
+    border-color: color-mix(in srgb, var(--logx-primary) 35%, transparent);
     outline: none;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 6%);
+    box-shadow: var(--chat-shadow-hover);
+    transform: translateY(-2px);
+  }
+
+  .example:active {
+    transform: translateY(0);
   }
 
   .example__icon {
+    display: inline-flex;
     flex: none;
-    margin-top: 2px;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     font-size: 16px;
     color: var(--logx-primary);
+    background: color-mix(in srgb, var(--logx-primary) 10%, transparent);
+    border-radius: var(--custom-radius, 8px);
+    transition:
+      color 0.25s,
+      background 0.25s;
   }
+
+  .example:hover .example__icon,
+  .example:focus-visible .example__icon {
+    color: #fff;
+    background: var(--chat-gradient);
+  }
+
+  .example__go {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    font-size: 16px;
+    color: var(--logx-primary);
+    opacity: 0;
+    transition:
+      opacity 0.25s,
+      transform 0.25s;
+    transform: translate(-4px, -50%);
+  }
+
+  .example:hover .example__go,
+  .example:focus-visible .example__go {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+
+  /* ---------- 对话 ---------- */
 
   .turn {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
+    animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
   .ask {
@@ -607,10 +730,13 @@
     padding: 10px 16px;
     font-size: 14px;
     line-height: 1.7;
-    color: var(--logx-on-primary, #fff);
+    color: #fff;
     white-space: pre-wrap;
-    background: var(--logx-primary);
+    background: var(--chat-gradient);
     border-radius: var(--chat-radius) var(--chat-radius) 4px var(--chat-radius);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 18%),
+      0 8px 20px -10px var(--chat-glow);
   }
 
   .reply {
@@ -626,10 +752,13 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    font-size: 17px;
-    color: var(--logx-primary);
-    background: color-mix(in srgb, var(--logx-primary) 10%, transparent);
-    border-radius: 50%;
+    font-size: 16px;
+    color: #fff;
+    background: var(--chat-gradient);
+    border-radius: var(--custom-radius, 8px);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 30%),
+      0 6px 14px -6px var(--chat-glow);
   }
 
   .answer {
@@ -638,10 +767,11 @@
     flex-direction: column;
     gap: 12px;
     min-width: 0;
-    padding: 14px 18px;
-    background: var(--logx-gray-100);
+    padding: 16px 20px;
+    background: var(--default-box-color);
     border: 1px solid var(--logx-card-border);
     border-radius: 4px var(--chat-radius) var(--chat-radius);
+    box-shadow: var(--chat-shadow);
   }
 
   .answer__error {
@@ -651,42 +781,120 @@
     color: var(--logx-danger);
   }
 
+  /* 三个跳动的点 + 一道扫过文字的高光 */
   .thinking {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     align-items: center;
-    color: var(--logx-gray-600);
+    font-size: 14px;
   }
 
-  .thinking .spin {
-    color: var(--logx-primary);
+  .thinking__dots {
+    display: inline-flex;
+    gap: 4px;
   }
 
-  .spin {
-    animation: spin 1s linear infinite;
+  .thinking__dots i {
+    width: 6px;
+    height: 6px;
+    background: var(--logx-primary);
+    border-radius: 50%;
+    animation: bounce 1.2s ease-in-out infinite;
   }
 
-  @keyframes spin {
+  .thinking__dots i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .thinking__dots i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .thinking__text {
+    color: transparent;
+    background: linear-gradient(
+        90deg,
+        var(--logx-gray-600) 0%,
+        var(--logx-gray-600) 40%,
+        var(--logx-primary) 50%,
+        var(--logx-gray-600) 60%,
+        var(--logx-gray-600) 100%
+      )
+      0 0 / 250% 100%;
+    background-clip: text;
+    animation: shimmer 2s linear infinite;
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  @keyframes bounce {
+    0%,
+    80%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+
+    40% {
+      opacity: 1;
+      transform: translateY(-4px);
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+
     to {
-      transform: rotate(360deg);
+      background-position: -150% 0;
+    }
+  }
+
+  @keyframes blink {
+    50% {
+      opacity: 0;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .spin {
+    .welcome > *,
+    .turn,
+    .thinking__dots i,
+    .thinking__text,
+    .md--streaming > :last-child::after {
       animation: none;
     }
   }
 
+  /* ---------- 回答正文 ---------- */
+
   .md {
     font-size: 14px;
-    line-height: 1.8;
+    line-height: 1.85;
     color: var(--logx-gray-900);
     overflow-wrap: anywhere;
   }
 
+  /* 生成中在末尾显示闪烁的光标 */
+  .md--streaming > :last-child::after {
+    display: inline-block;
+    width: 2px;
+    height: 1.1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    content: '';
+    background: var(--logx-primary);
+    animation: blink 1s step-end infinite;
+  }
+
   .md :deep(p) {
-    margin: 0 0 8px;
+    margin: 0 0 10px;
   }
 
   .md :deep(> :last-child) {
@@ -697,36 +905,72 @@
   .md :deep(h4),
   .md :deep(h5),
   .md :deep(h6) {
-    margin: 14px 0 6px;
+    margin: 18px 0 8px;
     font-size: 15px;
     font-weight: 600;
+    color: var(--logx-gray-900);
+  }
+
+  .md :deep(> h3:first-child),
+  .md :deep(> h4:first-child) {
+    margin-top: 0;
   }
 
   .md :deep(ul),
   .md :deep(ol) {
     padding-left: 22px;
-    margin: 0 0 8px;
+    margin: 0 0 10px;
+  }
+
+  /* 全局 reset 去掉了列表符号，这里加回来 */
+  .md :deep(ul) {
+    list-style: disc;
+  }
+
+  .md :deep(ol) {
+    list-style: decimal;
+  }
+
+  .md :deep(li) {
+    padding-left: 2px;
+    margin: 2px 0;
+  }
+
+  .md :deep(li::marker) {
+    font-weight: 600;
+    color: var(--logx-primary);
   }
 
   .md :deep(strong) {
     font-weight: 600;
+    color: var(--logx-gray-900);
+  }
+
+  .md :deep(a) {
+    color: var(--logx-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   .md :deep(code) {
-    padding: 1px 5px;
+    padding: 1px 6px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 12.5px;
-    background: var(--logx-gray-200);
-    border-radius: 4px;
+    color: var(--logx-gray-800);
+    background: var(--chat-surface-strong);
+    border-radius: 5px;
   }
 
   .md :deep(pre) {
-    padding: 12px 14px;
-    margin: 0 0 8px;
+    position: relative;
+    padding: 14px 16px;
+    margin: 0 0 10px;
     overflow-x: auto;
-    background: var(--default-box-color);
-    border: 1px solid var(--default-border);
+    line-height: 1.7;
+    background: var(--chat-surface);
+    border: 1px solid var(--logx-card-border);
     border-radius: var(--custom-radius, 8px);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 4%);
   }
 
   .md :deep(pre code) {
@@ -735,28 +979,40 @@
   }
 
   .md :deep(.md-cite) {
-    padding: 0 3px;
+    padding: 1px 4px;
     margin: 0 1px;
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 600;
     color: var(--logx-primary);
     cursor: pointer;
     background: color-mix(in srgb, var(--logx-primary) 10%, transparent);
     border-radius: 4px;
+    transition:
+      color 0.2s,
+      background 0.2s;
+  }
+
+  .md :deep(.md-cite:hover) {
+    color: #fff;
+    background: var(--logx-primary);
   }
 
   .sources {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding-top: 12px;
-    border-top: 1px solid var(--default-border);
+    padding: 10px 8px 6px;
+    margin: 2px -6px 0;
+    background: var(--chat-surface);
+    border: 1px solid var(--logx-card-border);
+    border-radius: var(--chat-radius);
   }
 
   .sources__title {
     display: flex;
     gap: 6px;
     align-items: center;
+    padding: 0 8px;
     margin-bottom: 4px;
     font-size: 12px;
     font-weight: 600;
@@ -781,8 +1037,9 @@
 
   .source:hover,
   .source:focus-visible {
-    background: var(--logx-hover-color);
+    background: var(--default-box-color);
     outline: none;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 6%);
   }
 
   .source--active {
@@ -835,7 +1092,7 @@
 
   .type--code {
     color: var(--logx-gray-700);
-    background: var(--logx-gray-200);
+    background: var(--chat-surface-strong);
   }
 
   .source__title {
@@ -920,7 +1177,7 @@
     padding: 0 6px 0 10px;
     font-size: 12px;
     color: var(--logx-gray-800);
-    background: var(--logx-gray-100);
+    background: var(--chat-surface);
     border: 1px solid var(--default-border);
     border-radius: var(--custom-radius, 8px);
   }
@@ -981,20 +1238,25 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 10px 12px;
-    background: var(--default-box-color);
-    border: 1px solid var(--default-border);
-    border-radius: calc(var(--chat-radius) + 4px);
-    box-shadow: 0 2px 12px rgb(0 0 0 / 4%);
+    padding: 12px 12px 10px;
+    background: color-mix(in srgb, var(--default-box-color) 86%, transparent);
+    backdrop-filter: blur(16px) saturate(1.5);
+    border: 1px solid var(--logx-card-border);
+    border-radius: calc(var(--chat-radius) + 6px);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 4%),
+      0 16px 40px -20px rgb(0 0 0 / 24%);
     transition:
-      border-color 0.2s,
-      box-shadow 0.2s;
+      border-color 0.25s,
+      box-shadow 0.25s;
   }
 
   .composer__box:focus-within,
   .composer__box.is-dragging {
-    border-color: color-mix(in srgb, var(--logx-primary) 55%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--logx-primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--logx-primary) 45%, transparent);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--logx-primary) 10%, transparent),
+      0 16px 40px -20px var(--chat-glow);
   }
 
   /* 输入框融入外框，不再单独描边 */
@@ -1013,8 +1275,47 @@
     align-items: center;
   }
 
+  /* 日志库、时间范围做成胶囊，融入输入框 */
+  .composer__bar :deep(.el-select__wrapper) {
+    min-height: 28px;
+    padding: 2px 10px;
+    background: var(--chat-surface-strong);
+    border-radius: 999px;
+    box-shadow: none;
+  }
+
+  .composer__bar :deep(.el-select__wrapper.is-focused),
+  .composer__bar :deep(.el-select__wrapper:hover) {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--logx-primary) 40%, transparent);
+  }
+
   .composer__send {
     margin-left: auto;
+    border-radius: 999px;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s,
+      opacity 0.2s;
+  }
+
+  .composer__send.el-button--primary {
+    background: var(--chat-gradient);
+    border-color: transparent;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 25%),
+      0 6px 16px -8px var(--chat-glow);
+  }
+
+  .composer__send.el-button--primary.is-disabled {
+    box-shadow: none;
+    opacity: 0.45;
+  }
+
+  .composer__send.el-button--primary:not(.is-disabled):hover {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 25%),
+      0 10px 22px -8px var(--chat-glow);
+    transform: translateY(-1px);
   }
 
   /* 拖入文件时盖住输入框的提示层；不拦截事件，避免 dragleave 来回触发 */
