@@ -37,7 +37,9 @@ public class AiChatService {
     private final String url;
     private final String apiKey;
     private final Duration timeout;
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    // Uvicorn rejects the h2c upgrade that the client would otherwise attempt on plain HTTP.
+    private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(10)).build();
     private volatile CachedProviders cachedProviders;
 
     private record CachedProviders(List<AiProvider> providers, Instant until) {

@@ -61,6 +61,8 @@ public class ClickHouseLogRecordRepository implements LogRecordRepository, Dispo
         config.setJdbcUrl(url);
         config.setUsername(username);
         config.setPassword(password);
+        // The driver only decompresses LZ4 responses, while recent servers default to ZSTD.
+        config.addDataSourceProperty("clickhouse_setting_network_compression_method", "lz4");
         config.setMaximumPoolSize(poolSize);
         // Open connections on demand only, so an unreachable ClickHouse is not retried in the background.
         config.setMinimumIdle(0);
