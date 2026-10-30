@@ -55,6 +55,8 @@ public class ClickHouseHostMetricRepository implements HostMetricRepository, Dis
         config.setJdbcUrl(url);
         config.setUsername(username);
         config.setPassword(password);
+        // The driver only decompresses LZ4 responses, while recent servers default to ZSTD.
+        config.addDataSourceProperty("clickhouse_setting_network_compression_method", "lz4");
         config.setMaximumPoolSize(3);
         config.setMinimumIdle(0);
         config.setConnectionTimeout(5_000);
