@@ -135,10 +135,10 @@ public class AiDiagnosisService implements DisposableBean {
     /**
      * @param providers  the configured AI providers
      * @param usedToday  automatic analyses started today
-     * @param agent      whether analyses go to the loggingx-ai service, which picks its own models
+     * @param enabled    whether the loggingx-ai service is configured; it picks the models for analyses itself
      */
     public record SettingsView(String provider, String model, int dailyLimit, List<String> providers, int usedToday,
-                               RuleNotify notification, boolean agent) {
+                               RuleNotify notification, boolean enabled) {
     }
 
     public SettingsView settings() {
@@ -146,7 +146,7 @@ public class AiDiagnosisService implements DisposableBean {
         return new SettingsView(settings.provider(), settings.model(), settings.dailyLimit(),
                 chatService.providers().stream().map(AiProvider::id).toList(),
                 mapper.countAutomaticSince(startOfToday()),
-                notifyService.ruleNotify(NotifyService.RULE_AI, 0L), agentClient.enabled());
+                notifyService.ruleNotify(NotifyService.RULE_AI, 0L), chatService.enabled());
     }
 
     public SettingsView saveSettings(String provider, String model, Integer dailyLimit, RuleNotify notification,
@@ -428,9 +428,6 @@ public class AiDiagnosisService implements DisposableBean {
         update(diagnosis, AiDiagnosis.RUNNING, null, null, null, null, null, null, null, null, null, null, null,
                 null);
         try {
-            if (!agentClient.enabled()) {
-                throw new IllegalStateException("loggingx-ai is not configured: set LOGGINGX_AI_AGENT_URL");
-            }
             String commit = null;
             List<CodeRef> refs = List.of();
             AiStoreConfig config = mapper.selectStoreConfig(diagnosis.storeId());
@@ -444,8 +441,8 @@ public class AiDiagnosisService implements DisposableBean {
                     parsed.frames().stream().filter(frame -> !frames.contains(frame)).forEach(frames::add);
                     refs = repositories.snippets(config.storeId(), frames, CODE_REFS, CODE_CONTEXT, CODE_CHARS);
                 } catch (RepoException e) {
-                    // Analysed from the log alone.
-                    log.warn("AI diagnosis {}: cannot sync the code repository: {}", id, e.getMessage());
+                    log.warn("Cannot read the code of store {} for AI diagnosis {}: {}", config.storeId(), id,
+                            e.getMessage());
                 }
             }
             String store = storeRepository.findById(diagnosis.storeId()).map(LogStore::name).orElse("-");
@@ -456,7 +453,8 @@ public class AiDiagnosisService implements DisposableBean {
                     AiAgentClient.PROVIDER, result.model(), truncate(result.summary(), 500), result.rootCause(),
                     result.suggestion(), result.diff(), confidence(result.confidence()), result.promptTokens(),
                     result.completionTokens(), null);
-            log.info("event=ai.diagnosis.done id={} storeId={} codeRefs={}", id, diagnosis.storeId(), refs.size());
+            log.info("event=ai.diagnosis.done id={} storeId={} model={} codeRefs={}", id, diagnosis.storeId(),
+                    result.model(), refs.size());
             notifyDone(done, store);
         } catch (RuntimeException e) {
             log.warn("AI diagnosis {} failed: {}", id, e.getMessage());

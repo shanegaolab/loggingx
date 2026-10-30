@@ -88,14 +88,14 @@ loggingx:
       # Comma-separated.
       topics: ${LOGGINGX_KAFKA_TOPICS:loggingx-logs}
       group-id: ${LOGGINGX_KAFKA_GROUP_ID:loggingx}
+  # Every AI feature (chat, the assistant, diagnosis) runs in the loggingx-ai service (../loggingx-ai in this
+  # repository), which holds the DeepSeek and Qwen keys. Without a URL the AI pages report that AI is not configured.
   ai:
-    # The loggingx-ai service (../loggingx-ai in this repository) makes every model call: AI diagnosis with
-    # several agents on DeepSeek and Qwen, and the chat and ops assistant with the provider chosen in the settings.
-    # The provider API keys are configured there.
-    agent:
-      url: ${LOGGINGX_AI_AGENT_URL:http://localhost:8001}
-      api-key: ${LOGGINGX_AI_AGENT_API_KEY:}
-      timeout: ${LOGGINGX_AI_AGENT_TIMEOUT:5m}
+    url: ${LOGGINGX_AI_URL:}
+    # Must match the service's LOGGINGX_AI_API_KEY; sent as the X-API-Key header.
+    api-key: ${LOGGINGX_AI_API_KEY:}
+    # One request; a diagnosis takes several model calls.
+    timeout: ${LOGGINGX_AI_TIMEOUT:5m}
   # Log line storage when loggingx.log.storage is clickhouse; the database must exist, the table is created.
   clickhouse:
     url: ${LOGGINGX_CLICKHOUSE_URL:jdbc:clickhouse://localhost:8123/loggingx}

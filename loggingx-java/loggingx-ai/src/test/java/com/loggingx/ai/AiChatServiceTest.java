@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,128 +24,143 @@ import org.junit.jupiter.api.Test;
 class AiChatServiceTest {
 
     private static final String REPLY = """
-            {"provider":"qwen","model":"qwen-plus","content":"pong","promptTokens":11,"completionTokens":3}""";
+            {"provider":"deepseek","model":"deepseek-chat","content":"pong","promptTokens":13,"completionTokens":5}""";
     private static final String STREAM = """
-            event: delta
+            event: message
             data: {"content": "po"}
 
-            event: delta
+            event: message
             data: {"content": "ng"}
 
-            event: result
-            data: {"provider": "deepseek", "model": "deepseek-chat", "content": "pong", "promptTokens": 5, "completionTokens": 2}
-
             event: done
-            data: {}
+            data: {"provider": "qwen", "model": "qwen-plus", "content": "pong", "promptTokens": 9, "completionTokens": 2}
 
             """;
 
     private HttpServer server;
     private final Map<String, String> requests = new ConcurrentHashMap<>();
-    private final Map<String, String> headers = new ConcurrentHashMap<>();
-    private volatile int status = 200;
-    private volatile String body = REPLY;
+    private final Map<String, String> apiKeys = new ConcurrentHashMap<>();
+    private final AtomicInteger healthCalls = new AtomicInteger();
+    private volatile int chatStatus = 200;
+    private volatile String chatBody = REPLY;
+    private volatile String streamBody = STREAM;
 
     @BeforeEach
-    void start() throws IOException {
+    void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/health", exchange -> respond(exchange, 200, "application/json",
-                "{\"status\":\"ok\",\"providers\":[\"qwen\",\"deepseek\"]}"));
+        server.createContext("/health", exchange -> {
+            healthCalls.incrementAndGet();
+            write(exchange, 200, "application/json", "{\"status\":\"ok\",\"providers\":[\"qwen\",\"deepseek\"]}");
+        });
         server.createContext("/api/v1/chat", exchange -> {
             String path = exchange.getRequestURI().getPath();
             requests.put(path, new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            headers.put(path, String.valueOf(exchange.getRequestHeaders().getFirst("X-API-Key")));
-            boolean stream = path.endsWith("/stream");
-            respond(exchange, status, stream && status == 200 ? "text/event-stream" : "application/json",
-                    stream && status == 200 ? STREAM : body);
+            apiKeys.put(path, String.valueOf(exchange.getRequestHeaders().getFirst("X-API-Key")));
+            if (path.endsWith("/stream")) {
+                write(exchange, chatStatus, "text/event-stream", chatStatus == 200 ? streamBody : chatBody);
+            } else {
+                write(exchange, chatStatus, "application/json", chatBody);
+            }
         });
         server.start();
     }
 
     @AfterEach
-    void stop() {
+    void stopServer() {
         server.stop(0);
     }
 
-    private static void respond(com.sun.net.httpserver.HttpExchange exchange, int code, String type, String text)
-            throws IOException {
-        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", type);
-        exchange.sendResponseHeaders(code, bytes.length);
-        exchange.getResponseBody().write(bytes);
-        exchange.close();
-    }
-
-    private AiChatService service(String apiKey) {
-        return new AiChatService("http://127.0.0.1:" + server.getAddress().getPort() + "/", apiKey,
+    private AiChatService service() {
+        return new AiChatService("http://127.0.0.1:" + server.getAddress().getPort() + "/", "secret",
                 Duration.ofSeconds(10));
     }
 
     @Test
-    void providersAreTheOnesTheServiceReportsInDeclarationOrder() {
-        assertThat(service("").providers()).containsExactly(AiProvider.DEEPSEEK, AiProvider.QWEN);
-    }
-
-    @Test
-    void providersAreEmptyWhenTheServiceIsDown() {
-        AiChatService service = service("");
-        server.stop(0);
+    void withoutAUrlNothingIsAvailable() {
+        AiChatService service = new AiChatService("", null, Duration.ofSeconds(1));
+        assertThat(service.enabled()).isFalse();
         assertThat(service.providers()).isEmpty();
-    }
-
-    @Test
-    void chatSendsTheCommandAndReturnsTheAnswer() {
-        AiChatReply reply = service("secret").chat(new AiChatCommand("qwen", "ping", "be brief", " "));
-
-        assertThat(reply).isEqualTo(new AiChatReply("qwen", "qwen-plus", "pong", 11, 3));
-        assertThat(requests.get("/api/v1/chat"))
-                .isEqualTo("{\"provider\":\"qwen\",\"model\":null,\"message\":\"ping\",\"systemPrompt\":\"be brief\"}");
-        assertThat(headers.get("/api/v1/chat")).isEqualTo("secret");
-    }
-
-    @Test
-    void anUnconfiguredProviderIsABadRequest() {
-        status = 400;
-        body = "{\"detail\":\"AI provider 'qwen' is not configured\"}";
-
-        assertThatThrownBy(() -> service("").chat(new AiChatCommand("qwen", "ping", null, null)))
+        assertThatThrownBy(() -> service.chat(new AiChatCommand(null, "ping", null, null)))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("AI provider 'qwen' is not configured");
+                .hasMessageContaining("LOGGINGX_AI_URL");
     }
 
     @Test
-    void aFailedModelCallIsABadGateway() {
-        status = 502;
-        body = "{\"detail\":\"deepseek:deepseek-chat 调用失败：401\"}";
+    void providersComeFromTheServiceAndAreCached() {
+        AiChatService service = service();
+        assertThat(service.providers()).containsExactly(AiProvider.QWEN, AiProvider.DEEPSEEK);
+        assertThat(service.providers()).containsExactly(AiProvider.QWEN, AiProvider.DEEPSEEK);
+        assertThat(healthCalls).hasValue(1);
+    }
 
-        assertThatThrownBy(() -> service("").chat(new AiChatCommand(null, "ping", null, null)))
+    @Test
+    void chatSendsTheCommandAndReadsTheReply() {
+        AiChatReply reply = service().chat(new AiChatCommand("deepseek", "ping", "be brief", " deepseek-reasoner "));
+
+        assertThat(reply).isEqualTo(new AiChatReply("deepseek", "deepseek-chat", "pong", 13, 5));
+        assertThat(requests.get("/api/v1/chat"))
+                .contains("\"message\":\"ping\"", "\"systemPrompt\":\"be brief\"", "\"provider\":\"deepseek\"",
+                        "\"model\":\"deepseek-reasoner\"");
+        assertThat(apiKeys.get("/api/v1/chat")).isEqualTo("secret");
+    }
+
+    @Test
+    void serviceErrorsBecomeBadGatewayAndRejectionsBadRequest() {
+        chatStatus = 502;
+        chatBody = "{\"detail\":\"调用模型失败：deepseek: 401\"}";
+        assertThatThrownBy(() -> service().chat(new AiChatCommand(null, "ping", null, null)))
                 .isInstanceOf(BadGatewayException.class)
-                .hasMessageContaining("调用失败");
+                .hasMessageContaining("调用模型失败");
+
+        chatStatus = 422;
+        chatBody = "{\"detail\":[{\"msg\":\"String should have at least 1 character\"}]}";
+        assertThatThrownBy(() -> service().chat(new AiChatCommand(null, "", null, null)))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test
-    void streamsDeltasThenTheWholeAnswer() {
-        List<AiChatStreamEvent> events = service("").stream(new AiChatCommand(null, "ping", null, null))
+    void unreachableServiceIsABadGateway() {
+        AiChatService service = new AiChatService("http://127.0.0.1:1", null, Duration.ofSeconds(2));
+        assertThat(service.providers()).isEmpty();
+        assertThatThrownBy(() -> service.chat(new AiChatCommand(null, "ping", null, null)))
+                .isInstanceOf(BadGatewayException.class)
+                .hasMessageContaining("Cannot reach loggingx-ai");
+    }
+
+    @Test
+    void streamsPiecesThenTheWholeReply() {
+        List<AiChatStreamEvent> events = service().stream(new AiChatCommand(null, "ping", null, null))
                 .collectList().block(Duration.ofSeconds(10));
 
         assertThat(events).containsExactly(
                 new AiChatStreamEvent.Delta("po"),
                 new AiChatStreamEvent.Delta("ng"),
-                new AiChatStreamEvent.Done(new AiChatReply("deepseek", "deepseek-chat", "pong", 5, 2)));
+                new AiChatStreamEvent.Done(new AiChatReply("qwen", "qwen-plus", "pong", 9, 2)));
+        assertThat(requests.get("/api/v1/chat/stream")).contains("\"provider\":null");
     }
 
     @Test
-    void streamRejectsAnUnknownProviderBeforeStarting() {
-        assertThatThrownBy(() -> service("").stream(new AiChatCommand("openai", "ping", null, null)))
-                .isInstanceOf(BadRequestException.class);
-    }
-
-    @Test
-    void anUnreachableServiceIsABadGateway() {
-        AiChatService service = service("");
-        server.stop(0);
-        assertThatThrownBy(() -> service.chat(new AiChatCommand(null, "ping", null, null)))
+    void streamErrorsBecomeBadGateway() {
+        streamBody = "event: message\ndata: {\"content\": \"po\"}\n\nevent: error\ndata: {\"message\": \"quota\"}\n\n";
+        assertThatThrownBy(() -> service().stream(new AiChatCommand(null, "ping", null, null))
+                .collectList().block(Duration.ofSeconds(10)))
                 .isInstanceOf(BadGatewayException.class)
-                .hasMessageContaining("Cannot reach loggingx-ai");
+                .hasMessageContaining("quota");
+
+        chatStatus = 502;
+        chatBody = "{\"detail\":\"no provider\"}";
+        assertThatThrownBy(() -> service().stream(new AiChatCommand(null, "ping", null, null))
+                .collectList().block(Duration.ofSeconds(10)))
+                .isInstanceOf(BadGatewayException.class)
+                .hasMessageContaining("no provider");
+    }
+
+    private static void write(com.sun.net.httpserver.HttpExchange exchange, int status, String type, String body)
+            throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", type);
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
     }
 }

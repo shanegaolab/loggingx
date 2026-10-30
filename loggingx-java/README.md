@@ -13,7 +13,7 @@ loggingx-java
 ├── loggingx-thirdparty   # 外部系统适配器
 ├── loggingx-auth         # 注册、登录、JWT 与安全配置
 ├── loggingx-biz          # 用户及日志分析业务服务
-├── loggingx-ai           # loggingx-ai 服务的客户端（AI 对话，DeepSeek、通义千问）
+├── loggingx-ai           # 调用 Python loggingx-ai 服务的客户端（对话、流式对话、诊断）
 └── loggingx-web          # Spring Boot 启动入口和 HTTP API
 ```
 
@@ -134,7 +134,7 @@ LOGGINGX_TEST_CLICKHOUSE_URL=jdbc:clickhouse://host:8123/loggingx LOGGINGX_TEST_
 
 **日志库权限**：「系统管理 → 角色管理」里每个角色可设置「日志库权限」：全部日志库（默认，包括以后新建的），或指定的几个日志库。用户能访问的日志库是其所有启用角色的并集，超级管理员始终可以访问全部。日志查询、实时日志、采集 Agent、主机监控、告警中心、备份管理、AI 诊断和仪表盘都只显示可访问的日志库；请求中带 `storeId` 参数的接口统一由 `StoreAccessInterceptor` 校验，越权返回 403。新建、删除日志库和作用于全部日志库的监控告警规则需要「全部日志库」权限；管理员只能把自己能访问的日志库分配给角色。接口：`GET|PUT /api/role/{id}/log-stores`、`GET /api/role/log-store-options`。
 
-**AI 运维**：「智能问答」用自然语言提问（如「订单服务为什么一直报错」），AI 检索知识库、历史诊断、错误归类、告警、错误日志和代码后回答并标注出处（RAG）；「AI 诊断」在日志库关联 Git 代码仓库后，新出现的错误类型、日志告警或手动选择的错误日志会连同堆栈指向的源代码一起交给 AI 模型，给出原因分析、修改建议和 diff，结果在一级菜单「AI 运维」查看，并通过顶栏通知和邮件 / 短信提醒。需要服务器安装 `git` 并配置 AI 提供方的 API Key，详见 [docs/ai-diagnosis.md](docs/ai-diagnosis.md)。
+**AI 运维**：「智能问答」用自然语言提问（如「订单服务为什么一直报错」），AI 检索知识库、历史诊断、错误归类、告警、错误日志和代码后回答并标注出处（RAG）；「AI 诊断」在日志库关联 Git 代码仓库后，新出现的错误类型、日志告警或手动选择的错误日志会连同堆栈指向的源代码一起交给 AI 模型，给出原因分析、修改建议和 diff，结果在一级菜单「AI 运维」查看，并通过顶栏通知和邮件 / 短信提醒。需要服务器安装 `git` 并接入 loggingx-ai 服务（`LOGGINGX_AI_URL`），详见 [docs/ai-diagnosis.md](docs/ai-diagnosis.md)。
 
 **告警与通知**：「告警中心」（一级菜单，分「告警事件」「告警规则」「通知管理」三个页面）分为**日志告警**（时间窗口内匹配级别 / 关键字的日志条数超过阈值）和**监控告警**（主机资源阈值、Agent 离线），每条规则可选择**邮件**（SMTP）和/或**短信**（阿里云或腾讯云，页面中选择）通知系统用户与通知组，支持恢复通知、重复提醒、测试发送和通知记录。SMTP 密码与短信密钥加密存库。详见 [docs/alerting.md](docs/alerting.md)；接口为 `/api/alert-center/*`（按页面授权，见文档）。
 
@@ -170,15 +170,17 @@ LOGGINGX_TEST_CLICKHOUSE_URL=jdbc:clickhouse://host:8123/loggingx LOGGINGX_TEST_
 
 ### AI 大模型
 
-后端不直接调用任何大模型：AI 对话、智能问答和 AI 诊断都交给 Python 的 [loggingx-ai](../loggingx-ai/README.md) 服务（`loggingx-ai` 模块的 `AiChatService` 和 `loggingx-biz` 的 `AiAgentClient` 是它的客户端）。提供方是 DeepSeek（`deepseek`）和通义千问（`qwen`），API Key、默认模型和地址都在 loggingx-ai 的 `.env` 里配置；`/api/ai/providers` 返回它已配置的提供方，它没启动时为空列表。
+所有 AI 功能（`/api/ai/chat`、智能问答、AI 诊断）都由 Python 服务 [loggingx-ai](../loggingx-ai/README.md) 完成，它负责接入 DeepSeek 和通义千问、在两者之间失败切换，以及多 agent 诊断。本模块只是它的 HTTP 客户端（`AiChatService`），不再依赖 Spring AI，模型的 Key 也只在 loggingx-ai 里配置：
 
 | 变量 | 说明 |
 | --- | --- |
-| `LOGGINGX_AI_AGENT_URL` | loggingx-ai 的地址，默认 `http://localhost:8001` |
-| `LOGGINGX_AI_AGENT_API_KEY` | 与 loggingx-ai 的 `LOGGINGX_AI_API_KEY` 一致，以 `X-API-Key` 请求头发送 |
-| `LOGGINGX_AI_AGENT_TIMEOUT` | 单次回答或诊断的超时，默认 `5m` |
+| `LOGGINGX_AI_URL` | loggingx-ai 服务地址，如 `http://localhost:8001`；不设置时 AI 功能不可用，其余功能正常 |
+| `LOGGINGX_AI_API_KEY` | 与 loggingx-ai 的 `LOGGINGX_AI_API_KEY` 相同，作为 `X-API-Key` 发送 |
+| `LOGGINGX_AI_TIMEOUT` | 单次请求超时，默认 `5m`（多 agent 诊断较慢） |
 
-请求体里的 `provider`、`model` 可留空，此时用 loggingx-ai 第一个已配置的提供方和它的默认模型。提供方未配置返回 400；模型调用失败（Key 无效、限流、模型不存在）或 loggingx-ai 连不上返回 502，`msg` 中带有原始错误信息。
+`/api/ai/providers` 返回 loggingx-ai 已配置 Key 的提供方（来自它的 `/health`，缓存 30 秒），服务没配置或连不上时为空列表。`/api/ai/chat` 的 `provider` 可选 `deepseek` 或 `qwen`，不填时由 loggingx-ai 选择并在失败时切换到另一个；指定了提供方则只用它，`model` 才会生效。
+
+loggingx-ai 拒绝的请求（提供方未配置 Key、参数无效）返回 400；连不上 loggingx-ai 或模型调用失败（Key 无效、限流、网络错误）返回 502，`msg` 中带有原始错误信息。
 
 #### 流式输出
 
@@ -197,7 +199,7 @@ data:{"provider":"deepseek","model":"deepseek-v4-flash","content":"你好","prom
 
 - `message`：增量文本；`done`：结束，带完整回答、模型和 token 数（提供方未返回时为 `null`）。
 - 请求无效（未登录、参数校验失败、提供方未配置）时不会开始推送，按普通接口返回 JSON 和对应状态码。
-- 推送开始后状态码已是 200，提供方报错时发送 `event:error`、`data:{"code":502,"msg":"..."}` 后结束，不再发送 `done`。
+- 推送开始后状态码已是 200，模型报错时发送 `event:error`、`data:{"code":502,"msg":"..."}` 后结束，不再发送 `done`。
 - 浏览器 `EventSource` 只支持 GET 且不能带 `Authorization` 头，前端请用 `fetch` 读取响应流（或 `@microsoft/fetch-event-source` 等库）。
 - 单个流最长 5 分钟（`spring.mvc.async.request-timeout`）。经 Nginx 反向代理时需关闭该路径的缓冲（`proxy_buffering off;`），否则事件会被攒到最后一次性返回。
 
@@ -231,8 +233,8 @@ data:{"provider":"deepseek","model":"deepseek-v4-flash","content":"你好","prom
 | POST / PUT / DELETE | `/api/dept`、`/api/dept/{id}` | 新增 / 编辑 / 删除部门（同一上级下名称唯一；有下级部门时不能删除；不能移到自身或下级之下） |
 | GET | `/api/post/list` | 岗位分页，参数 `current,size,postCode,postName,enabled` |
 | POST / PUT / DELETE | `/api/post`、`/api/post/{id}` | 新增 / 编辑 / 删除岗位（岗位编码唯一） |
-| GET | `/api/ai/providers` | 已配置 API Key 的大模型提供方，如 `["openai","deepseek"]` |
-| POST | `/api/ai/chat` | 单轮对话，body: `{"provider","message","systemPrompt?","model?"}`，返回 `{"provider","model","content","promptTokens","completionTokens"}` |
+| GET | `/api/ai/providers` | loggingx-ai 已配置 API Key 的提供方，如 `["deepseek","qwen"]` |
+| POST | `/api/ai/chat` | 单轮对话，body: `{"provider?","message","systemPrompt?","model?"}`，返回 `{"provider","model","content","promptTokens","completionTokens"}` |
 | POST | `/api/ai/chat/stream` | 流式对话（SSE），body 同上，见上文"流式输出" |
 
 健康检查：`GET /actuator/health`

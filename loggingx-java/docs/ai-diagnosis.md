@@ -34,7 +34,7 @@
 
 ## 准备
 
-1. **loggingx-ai**：启动 [loggingx-ai](../../loggingx-ai) 服务并在它的 `.env` 里设置 DeepSeek 或通义千问的 Key，后端用 `LOGGINGX_AI_AGENT_URL` 指向它（默认 `http://localhost:8001`，见 README「AI 大模型」）。「设置」里的提供方和模型用于智能问答和 AI 对话，留空则用第一个已配置的提供方和它的默认模型。
+1. **loggingx-ai 服务**：启动 [loggingx-ai](../../loggingx-ai)，在它的环境里设置 `LOGGINGX_AI_DEEPSEEK_API_KEY` 和 / 或 `LOGGINGX_AI_QWEN_API_KEY`；LoggingX 后端设置 `LOGGINGX_AI_URL`（和 `LOGGINGX_AI_API_KEY`，见 README「AI 大模型」）。「设置」里的提供方和模型只用于智能问答，留空由 loggingx-ai 选择。
 2. **git**：LoggingX 服务器上需要安装 `git` 命令。
 3. **代码仓库**：在「设置 → 日志库与代码仓库」为日志库填写 HTTPS 地址、分支（留空为默认分支）和访问令牌（只读即可，公开仓库可留空）。GitHub、GitLab 用户名可留空；Gitee 需要填写用户名。点「同步」验证地址和令牌。
 
@@ -56,22 +56,16 @@
 
 1. 从日志中解析出异常类型和栈帧，业务栈帧优先。
 2. 在仓库里按路径找到栈帧对应的文件：Java / Kotlin 按包名推出路径（`com.shop.OrderService` → `com/shop/OrderService.java`），其他语言按日志里的路径从长到短匹配。最多取 5 处、每处出错行上下 30 行，合计不超过约 24000 字符。
-3. 把日志、代码片段和提交号发给 loggingx-ai 的多 agent 诊断（见下节），得到 `summary`、`rootCause`、`suggestion`（Markdown）、`diff`（统一 diff）、`confidence`（high / medium / low）。
+3. 把日志、代码片段（带行号，标出出错行）和提交号发给 loggingx-ai 的 `POST /api/v1/diagnoses`，由多个 agent 完成分析（见下文），返回 `summary`、`rootCause`、`suggestion`（Markdown）、`diff`（统一 diff）、`confidence`（high / medium / low）。
 4. 结果保存在「诊断记录」，可标记已处理、忽略或重新分析；标记会同步到它所属的错误归类。
 
 ### 多 agent 诊断（loggingx-ai）
 
-[loggingx-ai](../../loggingx-ai) 服务中，日志分析（DeepSeek）和代码分析（通义千问 Coder）并行，再由根因、修复、评审三个 agent 依次完成，评审不通过会退回修复重做。各 agent 的模型在 loggingx-ai 中配置，与「设置」里的提供方和模型无关。诊断记录的提供方显示为「LoggingX AI 多 agent」，模型为根因 agent 使用的模型，token 数是所有 agent 的合计。
-
-| 变量 | 说明 |
-| --- | --- |
-| `LOGGINGX_AI_AGENT_URL` | loggingx-ai 的地址，默认 `http://localhost:8001` |
-| `LOGGINGX_AI_AGENT_API_KEY` | 与 loggingx-ai 的 `LOGGINGX_AI_API_KEY` 一致，以 `X-API-Key` 请求头发送 |
-| `LOGGINGX_AI_AGENT_TIMEOUT` | 单次诊断的超时，默认 `5m` |
+日志分析（DeepSeek）和代码分析（通义千问 Coder）并行，再由根因、修复、评审三个 agent 依次完成，评审不通过会退回修复重做。各 agent 的模型在 loggingx-ai 中配置，一个提供方失败时自动换另一个。诊断记录的提供方显示为「LoggingX AI 多 agent」，模型为根因 agent 使用的模型，token 数是所有 agent 的合计。请求超时由 `LOGGINGX_AI_TIMEOUT` 控制，默认 `5m`。
 
 loggingx-ai 调用失败时，这次诊断记为失败并保存错误信息，可以「重新分析」。
 
-注意：代码片段会经 loggingx-ai 发送给 DeepSeek、通义千问，请确认这符合公司的代码安全要求；需要时可让 loggingx-ai 的 `_BASE_URL` 指向公司内部的模型网关。AI 给出的修改需要评审和测试后再合入。
+注意：代码片段会经 loggingx-ai 发送给 DeepSeek、通义千问，请确认这符合公司的代码安全要求；需要时可让 loggingx-ai 的 `LOGGINGX_AI_DEEPSEEK_BASE_URL`、`LOGGINGX_AI_QWEN_BASE_URL` 指向公司内部的模型网关。AI 给出的修改需要评审和测试后再合入。
 
 ## 提醒
 

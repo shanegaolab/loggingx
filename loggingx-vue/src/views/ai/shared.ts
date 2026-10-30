@@ -28,7 +28,7 @@ export const CONFIDENCE: Record<string, { label: string; type: 'success' | 'warn
 export const PROVIDER_NAMES: Record<string, string> = {
   deepseek: 'DeepSeek',
   qwen: '通义千问',
-  // 早期的诊断记录
+  // 以前直接接入的提供方，只用于显示历史诊断记录
   openai: 'OpenAI',
   anthropic: 'Anthropic Claude',
   'loggingx-ai': 'LoggingX AI 多 agent'

@@ -5,25 +5,34 @@
       <header class="card__head">
         <div>
           <div class="card__title">AI 模型与通知</div>
-          <span class="muted">分析时把错误日志和相关代码发给所选的模型</span>
+          <span class="muted">分析时把错误日志和相关代码发给 loggingx-ai</span>
         </div>
       </header>
       <ElAlert
-        v-if="settings && !settings.providers.length"
+        v-if="settings && !settings.enabled"
         type="warning"
         :closable="false"
         show-icon
-        title="还没有可用的 AI 提供方"
-        description="所有 AI 功能都由 loggingx-ai 服务完成：启动它（后端用 LOGGINGX_AI_AGENT_URL 指向它，默认 http://localhost:8001），并在它的 .env 里设置 LOGGINGX_AI_DEEPSEEK_API_KEY 或 LOGGINGX_AI_QWEN_API_KEY。"
+        title="还没有接入 loggingx-ai"
+        description="在 LoggingX 后端设置 LOGGINGX_AI_URL 指向 loggingx-ai 服务后重启。"
         class="mb-4"
       />
       <ElAlert
-        v-else-if="settings?.agent"
+        v-else-if="settings && !settings.providers.length"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="loggingx-ai 不可达，或还没有配置模型"
+        description="确认 loggingx-ai 服务在运行，并在它的环境里设置 LOGGINGX_AI_DEEPSEEK_API_KEY 或 LOGGINGX_AI_QWEN_API_KEY。"
+        class="mb-4"
+      />
+      <ElAlert
+        v-else-if="settings"
         type="success"
         :closable="false"
         show-icon
         title="AI 诊断由 loggingx-ai 多 agent 服务完成"
-        description="日志分析、代码分析、根因、修复和评审分别由 DeepSeek、通义千问完成，模型在 loggingx-ai 中配置；下面的提供方和模型只用于智能问答和 AI 对话。"
+        description="日志分析、代码分析、根因、修复和评审分别由 DeepSeek、通义千问完成，模型在 loggingx-ai 中配置；下面的提供方和模型只用于智能问答。"
         class="mb-4"
       />
       <ElForm v-if="settings" label-width="96px" class="form">
@@ -31,7 +40,7 @@
           <ElSelect
             v-model="form.provider"
             clearable
-            placeholder="自动选择第一个已配置的"
+            placeholder="由 loggingx-ai 自动选择"
             class="w-provider"
           >
             <ElOption
@@ -46,7 +55,7 @@
           <ElInput
             v-model="form.model"
             clearable
-            placeholder="留空使用后端配置的默认模型"
+            placeholder="留空使用 loggingx-ai 配置的默认模型"
             class="w-provider"
           />
         </ElFormItem>

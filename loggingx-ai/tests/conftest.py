@@ -1,23 +1,7 @@
-from collections.abc import AsyncIterator
-
 from pydantic import BaseModel
 
 from loggingx_ai.diagnosis.prompts import CodeFindings, Fix, LogFindings, Review, RootCause
-from loggingx_ai.llm import ChatClient, ModelSpec
-from loggingx_ai.schemas import AgentStep, ChatResponse
-
-
-class FakeChat(ChatClient):
-    """A ChatClient whose models answer with fixed text instead of calling a provider."""
-
-    async def chat(self, spec: ModelSpec, system: str | None, user: str) -> ChatResponse:
-        return ChatResponse(provider=spec.provider, model=spec.model, content=f"echo: {user}", prompt_tokens=3,
-                            completion_tokens=2)
-
-    async def stream(self, spec: ModelSpec, system: str | None, user: str) -> AsyncIterator[str | ChatResponse]:
-        for piece in ("echo: ", user):
-            yield piece
-        yield await self.chat(spec, system, user)
+from loggingx_ai.schemas import AgentStep
 
 
 class FakeLlm:

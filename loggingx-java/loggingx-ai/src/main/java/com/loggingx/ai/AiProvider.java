@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Chat model providers of the loggingx-ai service; {@link #id()} is the name used in requests.
+ * Chat model providers of the loggingx-ai service; {@link #id()} is the name used in requests and settings.
  */
 public enum AiProvider {
     DEEPSEEK("deepseek"),

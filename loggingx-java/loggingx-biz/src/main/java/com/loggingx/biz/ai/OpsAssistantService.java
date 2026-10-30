@@ -435,10 +435,13 @@ public class OpsAssistantService {
             throw new BadRequestException("Each attached file must be at most " + MAX_ATTACHMENT_CHARS
                     + " characters");
         }
+        if (!chatService.enabled()) {
+            throw new BadRequestException("AI is not configured: set LOGGINGX_AI_URL to the loggingx-ai service");
+        }
         List<AiProvider> available = chatService.providers();
         if (available.isEmpty()) {
-            throw new BadRequestException("No AI provider is available: start loggingx-ai (LOGGINGX_AI_AGENT_URL) "
-                    + "with LOGGINGX_AI_DEEPSEEK_API_KEY or LOGGINGX_AI_QWEN_API_KEY set");
+            throw new BadRequestException("loggingx-ai at " + chatService.url() + " is unreachable or has no model "
+                    + "provider: set LOGGINGX_AI_DEEPSEEK_API_KEY or LOGGINGX_AI_QWEN_API_KEY for it");
         }
         AiSettings settings = mapper.selectSettings();
         AiProvider provider = settings == null || settings.provider() == null ? available.get(0)

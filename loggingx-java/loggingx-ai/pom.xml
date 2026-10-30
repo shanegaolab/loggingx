@@ -10,7 +10,7 @@
     </parent>
     <artifactId>loggingx-ai</artifactId>
     <name>loggingx-ai</name>
-    <description>Client of the loggingx-ai service (../../loggingx-ai), which runs every model call</description>
+    <description>Client of the Python loggingx-ai service (../../loggingx-ai), which runs every AI feature.</description>
     <dependencies>
         <dependency>
             <groupId>com.loggingx</groupId>
@@ -21,16 +21,17 @@
             <artifactId>spring-context</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
             <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <!-- Streamed answers are a Flux, which Spring MVC writes as server-sent events. -->
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

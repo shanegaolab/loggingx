@@ -2,18 +2,14 @@ package com.loggingx;
 
 import com.loggingx.biz.ai.AiDiagnosisService;
 import com.loggingx.biz.monitor.LogAlertService;
-import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -22,7 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,18 +27,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * AI diagnosis end to end: a store linked to a Git repository, errors grouped by fingerprint, a new kind of error
- * analysed with the code its stack trace points to, against a fake loggingx-ai.
+ * analysed with the code its stack trace points to, and the assistant, against a fake loggingx-ai service.
  */
 class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final String ANSWER = """
-            {"summary":"库存扣减前没有检查剩余数量","rootCause":"reserve 直接扣减库存，数量不足时变成负数后才抛出异常。",
-             "suggestion":"在扣减前检查库存，不足时返回明确的业务错误。",
-             "diff":"--- a/src/main/java/com/shop/OrderService.java\\n+++ b/src/main/java/com/shop/OrderService.java\\n@@ -5,3 +5,4 @@\\n+        if (stock < quantity) throw new OutOfStockException(sku);\\n",
-             "confidence":"high","model":"deepseek-chat","promptTokens":900,"completionTokens":120}""";
-    private static final List<String> PROMPTS = new CopyOnWriteArrayList<>();
-    private static final HttpServer LOGGINGX_AI = startLoggingxAi();
+    private static final String DIFF = "--- a/src/main/java/com/shop/OrderService.java\n"
+            + "+++ b/src/main/java/com/shop/OrderService.java\n@@ -5,3 +5,4 @@\n"
+            + "+        if (stock < quantity) throw new OutOfStockException(sku);\n";
+    private static final Map<String, Object> DIAGNOSIS = Map.ofEntries(
+            Map.entry("summary", "库存扣减前没有检查剩余数量"),
+            Map.entry("rootCause", "reserve 直接扣减库存，数量不足时变成负数后才抛出异常。"),
+            Map.entry("suggestion", "在扣减前检查库存，不足时返回明确的业务错误。"),
+            Map.entry("diff", DIFF), Map.entry("confidence", "HIGH"), Map.entry("errorCategory", "数据校验"),
+            Map.entry("codeRefs", List.of()), Map.entry("reviewIssues", List.of()), Map.entry("steps", List.of()),
+            Map.entry("provider", "deepseek"), Map.entry("model", "deepseek-chat"), Map.entry("promptTokens", 3200),
+            Map.entry("completionTokens", 800));
+    private static final FakeLoggingxAi AI = new FakeLoggingxAi(List.of("deepseek", "qwen"), (exchange, path, body) -> {
+        if (path.equals("/api/v1/diagnoses")) {
+            FakeLoggingxAi.respond(exchange, 200, FakeLoggingxAi.json(DIAGNOSIS));
+        } else if (path.equals("/api/v1/chat/stream")) {
+            FakeLoggingxAi.stream(exchange, FakeLoggingxAi.event("message",
+                    Map.of("content", "根据处理手册，库存为负是因为扣减前没有校验 [1]。"))
+                    + FakeLoggingxAi.event("message", Map.of("content", "建议先回滚订单。"))
+                    + FakeLoggingxAi.event("done", Map.of("provider", "qwen", "model", "qwen-plus",
+                    "content", "根据处理手册，库存为负是因为扣减前没有校验 [1]。建议先回滚订单。")));
+        } else {
+            FakeLoggingxAi.respond(exchange, 404, "{\"detail\":\"Not Found\"}");
+        }
+    });
 
     @Autowired
     private AiDiagnosisService aiDiagnosisService;
@@ -52,52 +64,14 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
 
     @DynamicPropertySource
     static void aiProperties(DynamicPropertyRegistry registry) {
-        registry.add("loggingx.ai.agent.url", () -> "http://127.0.0.1:" + LOGGINGX_AI.getAddress().getPort());
+        registry.add("loggingx.ai.url", AI::url);
+        registry.add("loggingx.ai.api-key", () -> FakeLoggingxAi.API_KEY);
         registry.add("loggingx.ai.repo-dir", () -> tempDir("loggingx-it-repos").toString());
     }
 
     @AfterAll
-    static void stopLoggingxAi() {
-        LOGGINGX_AI.stop(0);
-    }
-
-    /**
-     * A fake loggingx-ai with DeepSeek configured: diagnoses answer {@link #ANSWER}, chat streams a fixed answer.
-     */
-    private static HttpServer startLoggingxAi() {
-        try {
-            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/health", exchange -> respond(exchange, "application/json",
-                    "{\"status\":\"ok\",\"providers\":[\"deepseek\"]}"));
-            server.createContext("/api/v1/diagnoses", exchange -> {
-                PROMPTS.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                respond(exchange, "application/json", ANSWER);
-            });
-            server.createContext("/api/v1/chat/stream", exchange -> {
-                PROMPTS.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                respond(exchange, "text/event-stream", delta("根据处理手册，库存为负是因为扣减前没有校验 [1]。")
-                        + delta("建议先回滚订单。") + "event: result\ndata: {\"provider\":\"deepseek\","
-                        + "\"model\":\"deepseek-chat\",\"content\":\"...\"}\n\nevent: done\ndata: {}\n\n");
-            });
-            server.start();
-            return server;
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    private static void respond(com.sun.net.httpserver.HttpExchange exchange, String type, String text)
-            throws IOException {
-        byte[] body = text.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().add("Content-Type", type);
-        exchange.sendResponseHeaders(200, body.length);
-        exchange.getResponseBody().write(body);
-        exchange.close();
-    }
-
-    private static String delta(String content) {
-        ObjectNode delta = JSON.createObjectNode().put("content", content);
-        return "event: delta\ndata: " + JSON.writeValueAsString(delta) + "\n\n";
+    static void stopAi() {
+        AI.stop();
     }
 
     private static Path tempDir(String prefix) {
@@ -178,7 +152,8 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
         HttpResponse<String> settings = send("PUT", "/api/ai-diagnosis/settings", token,
                 "{\"provider\":\"deepseek\",\"dailyLimit\":5}");
         assertEquals(200, settings.statusCode(), settings.body());
-        assertTrue(settings.body().contains("\"providers\":[\"deepseek\"]"), settings.body());
+        assertTrue(settings.body().contains("\"providers\":[\"deepseek\",\"qwen\"]")
+                && settings.body().contains("\"enabled\":true"), settings.body());
         assertEquals(400, send("PUT", "/api/ai-diagnosis/stores/" + storeId, token,
                 "{\"repoUrl\":\"ssh://git@example.com/shop.git\"}").statusCode());
         HttpResponse<String> saved = send("PUT", "/api/ai-diagnosis/stores/" + storeId, token,
@@ -210,7 +185,15 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
         assertTrue(detail.contains("\"path\":\"src/main/java/com/shop/OrderService.java\""), detail);
         assertTrue(detail.contains("\"focusLine\":7"), detail);
         assertTrue(detail.contains("OutOfStockException"), "the diff is kept: " + detail);
-        assertTrue(PROMPTS.get(0).contains("STOCK-LINE"), "the code goes to loggingx-ai: " + PROMPTS.get(0));
+        assertTrue(detail.contains("\"provider\":\"loggingx-ai\"") && detail.contains("\"model\":\"deepseek-chat\""),
+                detail);
+        assertTrue(detail.contains("\"promptTokens\":3200"), detail);
+        FakeLoggingxAi.Call call = AI.calls("/api/v1/diagnoses").getFirst();
+        assertTrue(call.body().path("codeRefs").toString().contains("STOCK-LINE"), "the code goes along: " + call);
+        assertTrue(call.body().path("logText").asString().contains("OrderService.java:7"), call.toString());
+        assertEquals("Orders", call.body().path("storeName").asString());
+        assertEquals("order-1", call.body().path("host").asString());
+        assertEquals(FakeLoggingxAi.API_KEY, call.apiKey());
 
         // The bell shows it until read.
         String notices = send("GET", "/api/notices", token, null).body();
@@ -277,13 +260,12 @@ class AiDiagnosisApiIntegrationTest extends ApiIntegrationTest {
         assertTrue(found.body().contains("\"type\":\"log\""), "recent errors are included: " + found.body());
         assertTrue(found.body().contains("\"type\":\"stats\""), found.body());
 
-        int before = PROMPTS.size();
         HttpResponse<String> answer = send("POST", "/api/ai-ops/ask/stream", token, question, "text/event-stream");
         assertEquals(200, answer.statusCode(), answer.body());
         assertTrue(answer.body().indexOf("event:sources") < answer.body().indexOf("event:message"), answer.body());
         assertTrue(answer.body().contains("库存为负是因为扣减前没有校验 [1]"), answer.body());
         assertTrue(answer.body().contains("event:done"), answer.body());
-        String prompt = PROMPTS.get(before);
+        String prompt = AI.calls("/api/v1/chat/stream").getLast().body().path("message").asString();
         assertTrue(prompt.contains("ROLLBACK-FIRST") && prompt.contains("stock is negative for sku 5501"), prompt);
 
         assertEquals(400, send("POST", "/api/ai-ops/ask/stream", token, "{\"question\":\" \"}").statusCode());

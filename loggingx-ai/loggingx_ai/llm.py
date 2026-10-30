@@ -7,12 +7,12 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
 
 from loggingx_ai.config import Settings
-from loggingx_ai.schemas import AgentStep, ChatResponse
+from loggingx_ai.schemas import AgentStep, ChatReply, ChatRequest
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +21,10 @@ PROVIDERS = ("deepseek", "qwen")
 
 class LlmError(RuntimeError):
     """No configured model produced a usable answer."""
+
+
+class ProviderUnavailable(LlmError):
+    """The asked-for provider is unknown or has no key, or no provider has one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,66 @@ class ChatClient:
         ordered = [primary, *(defaults[p] for p in PROVIDERS if p != primary.provider)]
         return [spec for spec in ordered if self._key(spec.provider) is not None]
 
+    def chat_candidates(self, provider: str | None, model: str | None) -> list[ModelSpec]:
+        """A pinned provider alone, without fallback; else the chat model, then the other provider's default."""
+
+        if not provider:
+            return self.candidates("chat")
+        name = provider.strip().lower()
+        if name not in PROVIDERS:
+            raise ProviderUnavailable(f"未知的 AI 提供方 {provider}，可选 deepseek、qwen")
+        if self._key(name) is None:
+            raise ProviderUnavailable(f"AI 提供方 {name} 没有配置密钥")
+        default = self._settings.deepseek_model if name == "deepseek" else self._settings.qwen_model
+        return [ModelSpec(name, model.strip() if model and model.strip() else default)]
+
+    async def complete(self, request: ChatRequest) -> ChatReply:
+        failures: list[str] = []
+        for spec in self.chat_specs(request):
+            try:
+                reply = await self._chat(spec).ainvoke(_messages(request))
+            except Exception as error:  # noqa: BLE001 - any provider failure moves on to the next provider
+                log.warning("event=chat.failed provider=%s model=%s error=%s", spec.provider, spec.model, error)
+                failures.append(f"{spec.provider}:{spec.model}: {error}")
+                continue
+            return _reply(spec, reply)
+        raise LlmError("调用模型失败：" + "；".join(failures))
+
+    async def stream(self, request: ChatRequest) -> AsyncIterator[str | ChatReply]:
+        """Yields the answer's text as it is generated, then the whole reply.
+
+        A provider that fails before its first piece of text is replaced by the next one; a failure after that ends
+        the stream with the error.
+        """
+
+        failures: list[str] = []
+        for spec in self.chat_specs(request):
+            whole: AIMessageChunk | None = None
+            try:
+                async for chunk in self._chat(spec).astream(_messages(request), stream_usage=True):
+                    whole = chunk if whole is None else whole + chunk
+                    if chunk.text:
+                        yield chunk.text
+            except Exception as error:  # noqa: BLE001 - any provider failure moves on to the next provider
+                log.warning("event=chat.failed provider=%s model=%s error=%s", spec.provider, spec.model, error)
+                if whole is not None and whole.text:
+                    raise LlmError(f"{spec.provider}:{spec.model}: {error}") from error
+                failures.append(f"{spec.provider}:{spec.model}: {error}")
+                continue
+            yield _reply(spec, whole or AIMessageChunk(content=""))
+            return
+        raise LlmError("调用模型失败：" + "；".join(failures))
+
+    def chat_specs(self, request: ChatRequest) -> list[ModelSpec]:
+        """The models to try for a chat request, in order; raises ProviderUnavailable when there are none."""
+
+        specs = self.chat_candidates(request.provider, request.model)
+        if not specs:
+            raise ProviderUnavailable(
+                "没有配置 AI 提供方：请设置 LOGGINGX_AI_DEEPSEEK_API_KEY 或 LOGGINGX_AI_QWEN_API_KEY"
+            )
+        return specs
+
     def _chat(self, spec: ModelSpec) -> ChatOpenAI:
         model = self._models.get(spec)
         if model is None:
@@ -80,8 +144,6 @@ class ChatClient:
                 temperature=settings.temperature,
                 timeout=settings.request_timeout,
                 max_retries=settings.max_retries,
-                # Report token usage on the last chunk of a stream too.
-                stream_usage=True,
             )
             self._models[spec] = model
         return model
@@ -99,46 +161,6 @@ class ChatClient:
                             spec.model, error)
                 failures.append(f"{spec.provider}:{spec.model}: {error}")
         raise LlmError(f"{agent} 调用模型失败：" + "；".join(failures))
-
-    def chat_spec(self, provider: str | None, model: str | None) -> ModelSpec:
-        """The model of a plain chat: the given provider, or the first configured one, and its default model."""
-
-        configured = self.configured_providers()
-        if not configured:
-            raise LlmError("没有配置 AI 提供方：请设置 LOGGINGX_AI_DEEPSEEK_API_KEY 或 LOGGINGX_AI_QWEN_API_KEY")
-        name = (provider or "").strip().lower() or configured[0]
-        if name not in PROVIDERS:
-            raise ValueError(f"Unknown AI provider: {provider}")
-        if name not in configured:
-            raise ValueError(f"AI provider '{name}' is not configured")
-        default = self._settings.deepseek_model if name == "deepseek" else self._settings.qwen_model
-        return ModelSpec(name, (model or "").strip() or default)
-
-    async def chat(self, spec: ModelSpec, system: str | None, user: str) -> ChatResponse:
-        try:
-            reply = await self._chat(spec).ainvoke(_messages(system, user))
-        except Exception as error:  # noqa: BLE001 - reported to the caller as a provider failure
-            raise LlmError(f"{spec.provider}:{spec.model} 调用失败：{error}") from error
-        usage = reply.usage_metadata or {}
-        return ChatResponse(provider=spec.provider, model=spec.model, content=reply.text,
-                            prompt_tokens=usage.get("input_tokens"), completion_tokens=usage.get("output_tokens"))
-
-    async def stream(self, spec: ModelSpec, system: str | None, user: str) -> AsyncIterator[str | ChatResponse]:
-        """The answer's text piece by piece, then the whole answer with its token usage."""
-
-        content: list[str] = []
-        usage: dict = {}
-        try:
-            async for chunk in self._chat(spec).astream(_messages(system, user)):
-                if chunk.usage_metadata:
-                    usage = chunk.usage_metadata
-                if chunk.text:
-                    content.append(chunk.text)
-                    yield chunk.text
-        except Exception as error:  # noqa: BLE001 - reported to the caller as a provider failure
-            raise LlmError(f"{spec.provider}:{spec.model} 调用失败：{error}") from error
-        yield ChatResponse(provider=spec.provider, model=spec.model, content="".join(content),
-                           prompt_tokens=usage.get("input_tokens"), completion_tokens=usage.get("output_tokens"))
 
     async def _ask[T: BaseModel](
         self, spec: ModelSpec, agent: str, system: str, user: str, schema: type[T]
@@ -165,10 +187,6 @@ class ChatClient:
         raise AssertionError("unreachable")
 
 
-def _messages(system: str | None, user: str) -> list:
-    return [SystemMessage(system), HumanMessage(user)] if system and system.strip() else [HumanMessage(user)]
-
-
 def parse_json(text: str) -> dict:
     """The JSON object in a reply, ignoring code fences or text around it."""
 
@@ -180,3 +198,22 @@ def parse_json(text: str) -> dict:
         raise ValueError("回复不是 JSON 对象")
     return value
 
+
+
+def _messages(request: ChatRequest) -> list[BaseMessage]:
+    messages: list[BaseMessage] = [SystemMessage(request.system_prompt)] if request.system_prompt else []
+    for turn in request.history:
+        messages.append(HumanMessage(turn.content) if turn.role == "user" else AIMessage(turn.content))
+    messages.append(HumanMessage(request.message))
+    return messages
+
+
+def _reply(spec: ModelSpec, message: AIMessage) -> ChatReply:
+    usage = message.usage_metadata or {}
+    return ChatReply(
+        provider=spec.provider,
+        model=message.response_metadata.get("model_name") or spec.model,
+        content=message.text,
+        prompt_tokens=usage.get("input_tokens"),
+        completion_tokens=usage.get("output_tokens"),
+    )

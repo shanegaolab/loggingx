@@ -1,4 +1,4 @@
-"""HTTP API that loggingx-java calls for all of its AI work: diagnosing an error log, and plain chat."""
+"""HTTP API that loggingx-java calls to diagnose an error log."""
 
 import json
 import logging
@@ -13,8 +13,8 @@ from pydantic import BaseModel
 
 from loggingx_ai.config import Settings, get_settings
 from loggingx_ai.diagnosis import Diagnoser
-from loggingx_ai.llm import ChatClient, LlmError, ModelSpec
-from loggingx_ai.schemas import ChatRequest, ChatResponse, DiagnoseRequest, DiagnoseResponse
+from loggingx_ai.llm import ChatClient, LlmError, ProviderUnavailable
+from loggingx_ai.schemas import ChatReply, ChatRequest, DiagnoseRequest, DiagnoseResponse
 
 log = logging.getLogger(__name__)
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -28,7 +28,7 @@ def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = N
 
     app = FastAPI(
         title="LoggingX AI",
-        description="多 agent 错误诊断：日志分析、代码分析、根因、修复、评审。",
+        description="LoggingX 的 AI 服务：多 agent 错误诊断和对话接口（DeepSeek、通义千问）。",
         version="0.1.0",
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,
@@ -75,43 +75,36 @@ def create_app(settings: Settings | None = None, diagnoser: Diagnoser | None = N
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    def chat_spec(payload: ChatRequest) -> ModelSpec:
+    @app.post("/api/v1/chat", response_model=ChatReply, response_model_by_alias=True, dependencies=protected,
+              tags=["chat"])
+    async def chat(payload: ChatRequest) -> ChatReply:
         try:
-            return client.chat_spec(payload.provider, payload.model)
-        except (ValueError, LlmError) as error:
+            return await client.complete(payload)
+        except ProviderUnavailable as error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
-
-    @app.post("/api/v1/chat", response_model=ChatResponse, response_model_by_alias=True,
-              dependencies=protected, tags=["chat"])
-    async def chat(payload: ChatRequest) -> ChatResponse:
-        """A single chat turn with one model, for loggingx-java's AI chat and ops assistant."""
-
-        spec = chat_spec(payload)
-        try:
-            return await client.chat(spec, payload.system_prompt, payload.message)
         except LlmError as error:
-            log.warning("event=chat.failed error=%s", error)
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)) from None
 
     @app.post("/api/v1/chat/stream", dependencies=protected, tags=["chat"])
     async def chat_stream(payload: ChatRequest, request: Request) -> StreamingResponse:
-        """SSE: `delta` events with the answer's text, then `result` with the whole answer, or `error`."""
+        """SSE: `message` events with {"content"} pieces, then `done` with the whole reply, or `error`."""
 
-        spec = chat_spec(payload)
+        try:
+            client.chat_specs(payload)
+        except ProviderUnavailable as error:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
 
         async def events() -> AsyncIterator[str]:
             try:
-                async for item in client.stream(spec, payload.system_prompt, payload.message):
+                async for item in client.stream(payload):
                     if await request.is_disconnected():
                         return
-                    if isinstance(item, ChatResponse):
-                        yield _sse("result", item)
+                    if isinstance(item, ChatReply):
+                        yield _sse("done", item)
                     else:
-                        yield _sse("delta", {"content": item})
+                        yield _sse("message", {"content": item})
             except LlmError as error:
-                log.warning("event=chat.failed error=%s", error)
                 yield _sse("error", {"message": str(error)})
-            yield _sse("done", {})
 
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

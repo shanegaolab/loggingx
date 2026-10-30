@@ -38,8 +38,8 @@ LoggingX 把日志相关的工作放进一套部署在你自己服务器上的�
 **AI 运维**
 - 用自然语言提问，AI 从知识库、历史诊断、错误归类、告警、错误日志和代码中检索资料后回答，并标注出处（RAG）。
 - AI 诊断：新出现的错误类型、日志告警或手动选择的日志，连同堆栈指向的源代码一起分析，给出原因、修改建议和 diff。
-- 多 agent 诊断（可选的 `loggingx-ai` 服务，基于 LangGraph）：日志分析和代码分析并行，再由根因、修复、评审 agent 依次完成，模型用 DeepSeek 和通义千问；评审不通过会退回修复重做。
-- 错误按指纹归类；模型支持 DeepSeek、通义千问、OpenAI、Anthropic Claude。
+- 多 agent 诊断（`loggingx-ai` 服务，基于 LangGraph）：日志分析和代码分析并行，再由根因、修复、评审 agent 依次完成，模型用 DeepSeek 和通义千问；评审不通过会退回修复重做。
+- 错误按指纹归类；模型使用 DeepSeek 和通义千问，互为备份。所有 AI 功能都由 Python 服务 `loggingx-ai` 完成。
 
 **日志备份**
 - 每天把各日志库的日志按天压缩为 gzip 格式的 NDJSON，存到 S3 兼容对象存储（MinIO、阿里云 OSS、腾讯云 COS、AWS S3）。
@@ -73,14 +73,14 @@ loggingx
 ├── loggingx-java      # 后端：Spring Boot 4.1 / Java 25，Maven 多模块
 │   ├── loggingx-web       # 启动入口和 HTTP 接口
 │   ├── loggingx-biz       # 业务服务（日志、监控、告警、AI、备份）
-│   ├── loggingx-ai        # loggingx-ai 服务的客户端
+│   ├── loggingx-ai        # 调用 loggingx-ai 服务的客户端
 │   ├── loggingx-auth      # 登录、JWT、安全配置
 │   ├── loggingx-dao       # MySQL（MyBatis）和 ClickHouse 数据访问
 │   ├── loggingx-thirdparty、loggingx-common
 │   └── docs/              # Agent、告警、AI 诊断、备份文档
 ├── loggingx-vue       # 控制台：Vue 3 + TypeScript + Element Plus + Vite
 │   └── promo/             # 单文件产品宣传页
-└── loggingx-ai        # 多 agent AI 诊断：Python 3.14、FastAPI、LangGraph、DeepSeek + 通义千问
+└── loggingx-ai        # 全部 AI 能力（对话、智能问答、多 agent 诊断）：Python 3.14、FastAPI、LangGraph、DeepSeek + 通义千问
 ```
 
 ## 技术栈
@@ -91,7 +91,7 @@ loggingx
 | 存储 | ClickHouse（日志、主机指标）、MySQL（账号、配置）、Redis |
 | 采集 | Vector |
 | 前端 | Vue 3.5、TypeScript、Element Plus、Vite 7、Pinia、ECharts 6、Tailwind CSS 4 |
-| AI 诊断 | Python 3.14、FastAPI、LangGraph、LangChain、DeepSeek、通义千问（百炼 DashScope） |
+| AI | Python 3.14、FastAPI、LangGraph、LangChain、DeepSeek、通义千问（百炼 DashScope） |
 
 ## 快速开始
 
@@ -132,7 +132,7 @@ pnpm dev
 | `LOGGINGX_REDIS_HOST` / `_PORT` / `_PASSWORD` | Redis |
 | `LOGGINGX_CLICKHOUSE_URL` / `_USERNAME` / `_PASSWORD` | ClickHouse；`LOGGINGX_LOG_STORAGE=memory` 时日志只保存在内存 |
 | `LOGGINGX_BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | 没有超级管理员时自动创建的第一个超级管理员 |
-| `LOGGINGX_AI_AGENT_URL` / `_API_KEY` | [loggingx-ai](loggingx-ai/README.md) 服务的地址，所有模型调用（AI 对话、智能问答、多 agent 诊断）都由它完成，DeepSeek、通义千问的 Key 在那里配置；默认 `http://localhost:8001` |
+| `LOGGINGX_AI_URL` / `_API_KEY` / `_TIMEOUT` | 所有 AI 功能调用的 [loggingx-ai](loggingx-ai/README.md) 服务（DeepSeek、通义千问的 Key 在那里配置）；不设置时 AI 功能不可用 |
 | `LOGGINGX_BACKUP_SECRET` | 加密保存的密码和密钥、为下载链接签名（默认同 JWT 密钥） |
 | `LOGGINGX_KAFKA_ENABLED` / `_BOOTSTRAP_SERVERS` / `_TOPICS` | 可选的 Kafka 日志上报 |
 
