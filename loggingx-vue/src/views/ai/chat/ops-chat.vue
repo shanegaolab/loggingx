@@ -9,7 +9,9 @@
           <p class="welcome__text">
             AI 会先在知识库、历史 AI
             诊断、错误归类、告警和所选时间范围内的错误日志里查找相关资料，再根据资料回答，并用
-            [编号] 标出出处；问题里提到类名或文件名时，还会附上关联代码仓库里的代码。
+            [编号]
+            标出出处；问题里提到类名或文件名时，还会附上关联代码仓库里的代码。也可以上传日志、堆栈或配置文件让
+            AI 一起分析。
           </p>
           <div class="examples">
             <button
@@ -26,7 +28,15 @@
         </div>
 
         <div v-for="(turn, index) in turns" :key="index" class="turn">
-          <div class="bubble bubble--user">{{ turn.question }}</div>
+          <div class="ask">
+            <div class="bubble bubble--user">{{ turn.question }}</div>
+            <div v-if="turn.files.length" class="files files--sent">
+              <span v-for="file in turn.files" :key="file.name" class="file">
+                <LogxSvgIcon icon="ri:file-text-line" class="file__icon" />
+                <span class="file__name">{{ file.name }}</span>
+              </span>
+            </div>
+          </div>
           <div class="reply">
             <div class="reply__avatar"><LogxSvgIcon icon="ri:robot-2-line" /></div>
             <div class="answer">
@@ -71,9 +81,32 @@
               <div v-else-if="turn.sources && !turn.error" class="muted"
                 >没有找到相关资料，回答仅供参考</div
               >
-              <div v-if="turn.model" class="muted">
-                {{ turn.model }}
-                <template v-if="turn.tokens"> · {{ turn.tokens }} tokens</template>
+              <div v-if="turn.answer || turn.error" class="answer__foot">
+                <span v-if="turn.model" class="muted">
+                  {{ turn.model }}
+                  <template v-if="turn.tokens"> · {{ turn.tokens }} tokens</template>
+                </span>
+                <span class="answer__actions">
+                  <ElTooltip v-if="turn.answer" content="复制回答" placement="top">
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      aria-label="复制回答"
+                      @click="copy(turn)"
+                    >
+                      <LogxSvgIcon icon="ri:file-copy-line" />
+                    </button>
+                  </ElTooltip>
+                  <ElTooltip
+                    v-if="index === turns.length - 1 && !streaming"
+                    content="重新回答"
+                    placement="top"
+                  >
+                    <button type="button" class="icon-btn" aria-label="重新回答" @click="retry">
+                      <LogxSvgIcon icon="ri:refresh-line" />
+                    </button>
+                  </ElTooltip>
+                </span>
               </div>
             </div>
           </div>
@@ -82,7 +115,29 @@
     </div>
 
     <form class="composer" @submit.prevent="ask()">
-      <div class="composer__box">
+      <div
+        class="composer__box"
+        :class="{ 'is-dragging': dragging }"
+        @dragenter.prevent="dragging = true"
+        @dragover.prevent="dragging = true"
+        @dragleave.self="dragging = false"
+        @drop.prevent="onDrop"
+      >
+        <div v-if="files.length" class="files">
+          <span v-for="(file, i) in files" :key="file.name" class="file" :title="file.note">
+            <LogxSvgIcon icon="ri:file-text-line" class="file__icon" />
+            <span class="file__name">{{ file.name }}</span>
+            <span class="file__size">{{ file.size }}</span>
+            <button
+              type="button"
+              class="file__remove"
+              :aria-label="`移除 ${file.name}`"
+              @click="files.splice(i, 1)"
+            >
+              <LogxSvgIcon icon="ri:close-line" />
+            </button>
+          </span>
+        </div>
         <label for="ops-question" class="sr-only">问题</label>
         <ElInput
           id="ops-question"
@@ -92,10 +147,41 @@
           :autosize="{ minRows: 2, maxRows: 6 }"
           resize="none"
           maxlength="2000"
-          placeholder="例如：订单服务最近一小时为什么一直报错？（Enter 发送，Shift + Enter 换行）"
+          :placeholder="
+            files.length
+              ? '说说想让 AI 从文件里看什么，不填则直接分析错误原因（Enter 发送）'
+              : '例如：订单服务最近一小时为什么一直报错？（Enter 发送，Shift + Enter 换行，可拖入或粘贴日志文件）'
+          "
           @keydown.enter.exact.prevent="ask()"
+          @paste="onPaste"
         />
+        <div v-if="dragging" class="composer__drop">
+          <LogxSvgIcon icon="ri:upload-cloud-2-line" /> 松开即可添加文件
+        </div>
         <div class="composer__bar">
+          <input
+            ref="fileRef"
+            type="file"
+            multiple
+            :accept="ACCEPT"
+            class="sr-only"
+            tabindex="-1"
+            @change="onPick"
+          />
+          <ElTooltip
+            :content="`上传日志、堆栈或配置等文本文件，最多 ${MAX_FILES} 个`"
+            placement="top"
+          >
+            <button
+              type="button"
+              class="icon-btn"
+              aria-label="上传文件"
+              :disabled="files.length >= MAX_FILES"
+              @click="fileRef?.click()"
+            >
+              <LogxSvgIcon icon="ri:attachment-2" />
+            </button>
+          </ElTooltip>
           <ElSelect
             v-model="storeId"
             placeholder="全部日志库"
@@ -128,12 +214,13 @@
             class="composer__send"
             type="primary"
             native-type="submit"
-            :disabled="!question.trim()"
+            :disabled="!question.trim() && !files.length"
           >
             <LogxSvgIcon icon="ri:send-plane-2-line" class="mr-1" />提问
           </ElButton>
         </div>
       </div>
+      <p class="composer__hint">AI 根据检索到的资料回答，结论请结合实际日志核实</p>
     </form>
   </div>
 </template>
@@ -165,8 +252,25 @@
     code: '代码'
   }
 
+  /** 上传文件：只读文本，最多 3 个；超长的保留开头和结尾（日志的报错通常在末尾） */
+  const MAX_FILES = 3
+  const MAX_FILE_CHARS = 20000
+  const MAX_FILE_BYTES = 10 * 1024 * 1024
+  const ACCEPT =
+    '.log,.txt,.out,.err,.json,.yaml,.yml,.xml,.csv,.md,.properties,.conf,.ini,.toml,.env,' +
+    '.java,.kt,.py,.js,.ts,.go,.sql,.sh,.trace,.stack,text/*'
+  const DEFAULT_FILE_QUESTION = '请分析上传的文件，找出其中的错误、原因和处理建议'
+
+  interface ChatFile extends Api.AiOps.Attachment {
+    /** 文件大小，如 12.3 KB */
+    size: string
+    /** 截取说明，悬停时显示 */
+    note?: string
+  }
+
   interface ChatTurn {
     question: string
+    files: ChatFile[]
     answer: string
     sources?: Api.AiOps.Source[]
     error?: string
@@ -176,6 +280,9 @@
   }
 
   const question = ref('')
+  const files = ref<ChatFile[]>([])
+  const dragging = ref(false)
+  const fileRef = ref<HTMLInputElement>()
   const storeId = ref<number>()
   const hours = ref(24)
   const turns = ref<ChatTurn[]>([])
@@ -185,28 +292,111 @@
 
   const render = (text: string) => renderMarkdown(text)
 
-  const scrollToBottom = () =>
-    nextTick(() => scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight }))
+  const formatSize = (bytes: number) =>
+    bytes < 1024
+      ? `${bytes} B`
+      : bytes < 1024 * 1024
+        ? `${(bytes / 1024).toFixed(1)} KB`
+        : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
-  const ask = async (text?: string) => {
-    const content = (text ?? question.value).trim()
-    if (!content || streaming.value) return
-    question.value = ''
+  /** 超长时保留开头 30% 和结尾 70% */
+  const clip = (text: string) => {
+    if (text.length <= MAX_FILE_CHARS) return { content: text }
+    const marker = `\n…（中间省略 ${text.length - MAX_FILE_CHARS} 个字符）…\n`
+    const room = MAX_FILE_CHARS - marker.length
+    const headLength = Math.floor(room * 0.3)
+    return {
+      content: text.slice(0, headLength) + marker + text.slice(text.length - (room - headLength)),
+      note: `文件共 ${text.length} 个字符，只发送开头和结尾共 ${MAX_FILE_CHARS} 个`
+    }
+  }
+
+  const addFiles = async (list: Iterable<File>) => {
+    for (const file of list) {
+      if (files.value.length >= MAX_FILES) {
+        ElMessage.warning(`最多上传 ${MAX_FILES} 个文件`)
+        return
+      }
+      if (files.value.some((item) => item.name === file.name)) continue
+      if (file.size > MAX_FILE_BYTES) {
+        ElMessage.warning(`${file.name} 超过 10 MB，请截取相关片段后再上传`)
+        continue
+      }
+      const text = await file.text()
+      if (text.slice(0, 4096).includes('\u0000')) {
+        ElMessage.warning(`${file.name} 不是文本文件，目前只支持日志、堆栈、配置等文本`)
+        continue
+      }
+      if (!text.trim()) {
+        ElMessage.warning(`${file.name} 是空文件`)
+        continue
+      }
+      files.value.push({ name: file.name, size: formatSize(file.size), ...clip(text) })
+    }
+  }
+
+  const onPick = async (event: Event) => {
+    const input = event.target as HTMLInputElement
+    await addFiles(Array.from(input.files ?? []))
+    input.value = ''
+  }
+
+  const onDrop = (event: DragEvent) => {
+    dragging.value = false
+    addFiles(Array.from(event.dataTransfer?.files ?? []))
+  }
+
+  /** 粘贴文件时作为附件；粘贴普通文字照常输入 */
+  const onPaste = (event: ClipboardEvent) => {
+    const pasted = Array.from(event.clipboardData?.files ?? [])
+    if (!pasted.length) return
+    event.preventDefault()
+    addFiles(pasted)
+  }
+
+  /** 正在看上面的内容时不强制滚到底 */
+  const scrollToBottom = (force = false) => {
+    const el = scrollRef.value
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (force || nearBottom) nextTick(() => el.scrollTo({ top: el.scrollHeight }))
+  }
+
+  const ask = async (text?: string, attached?: ChatFile[]) => {
+    if (streaming.value) return
+    const sending = attached ?? files.value
+    const content = (text ?? question.value).trim() || (sending.length ? DEFAULT_FILE_QUESTION : '')
+    if (!content) return
+    if (!attached) {
+      question.value = ''
+      files.value = []
+    }
     const history: Api.AiOps.Turn[] = turns.value
       .filter((turn) => turn.answer && !turn.error)
       .slice(-3)
       .flatMap((turn) => [
-        { role: 'user' as const, content: turn.question },
+        {
+          role: 'user' as const,
+          content: turn.files.length
+            ? `${turn.question}（附件：${turn.files.map((file) => file.name).join('、')}）`
+            : turn.question
+        },
         { role: 'assistant' as const, content: turn.answer }
       ])
-    turns.value.push({ question: content, answer: '' })
+    turns.value.push({ question: content, files: sending, answer: '' })
     const turn = turns.value[turns.value.length - 1]
     streaming.value = true
     controller = new AbortController()
-    scrollToBottom()
+    scrollToBottom(true)
     try {
       await askOps(
-        { question: content, storeId: storeId.value, hours: hours.value, history },
+        {
+          question: content,
+          storeId: storeId.value,
+          hours: hours.value,
+          history,
+          attachments: sending.map(({ name, content }) => ({ name, content }))
+        },
         {
           onSources: (sources) => {
             turn.sources = sources
@@ -240,6 +430,18 @@
   const reset = () => {
     stop()
     turns.value = []
+  }
+
+  /** 重新回答最后一个问题 */
+  const retry = () => {
+    const last = turns.value.pop()
+    if (last) ask(last.question, last.files)
+  }
+
+  const { copy: writeClipboard } = useClipboard({ legacy: true })
+  const copy = async (turn: ChatTurn) => {
+    await writeClipboard(turn.answer)
+    ElMessage.success('已复制')
   }
 
   /** 点击回答中的 [n]：高亮并滚动到对应资料 */
@@ -393,8 +595,14 @@
     gap: 14px;
   }
 
+  .ask {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-end;
+  }
+
   .bubble--user {
-    align-self: flex-end;
     max-width: 80%;
     padding: 10px 16px;
     font-size: 14px;
@@ -649,6 +857,119 @@
     color: var(--logx-gray-600);
   }
 
+  .answer__foot {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 24px;
+  }
+
+  .answer__actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+  }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 16px;
+    color: var(--logx-gray-600);
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    border-radius: var(--custom-radius, 8px);
+    transition:
+      color 0.2s,
+      background 0.2s;
+  }
+
+  .icon-btn:hover:not(:disabled),
+  .icon-btn:focus-visible {
+    color: var(--logx-primary);
+    background: var(--logx-hover-color);
+    outline: none;
+  }
+
+  .icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  .files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .files--sent {
+    justify-content: flex-end;
+    max-width: 80%;
+  }
+
+  .file {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    max-width: 260px;
+    height: 30px;
+    padding: 0 6px 0 10px;
+    font-size: 12px;
+    color: var(--logx-gray-800);
+    background: var(--logx-gray-100);
+    border: 1px solid var(--default-border);
+    border-radius: var(--custom-radius, 8px);
+  }
+
+  .files--sent .file {
+    padding-right: 10px;
+  }
+
+  .file__icon {
+    flex: none;
+    font-size: 15px;
+    color: var(--logx-primary);
+  }
+
+  .file__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file__size {
+    flex: none;
+    color: var(--logx-gray-600);
+  }
+
+  .file__remove {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    font-size: 13px;
+    color: var(--logx-gray-600);
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+  }
+
+  .file__remove:hover,
+  .file__remove:focus-visible {
+    color: var(--logx-danger);
+    background: var(--logx-hover-color);
+    outline: none;
+  }
+
   .composer {
     width: 100%;
     max-width: var(--chat-width);
@@ -656,6 +977,7 @@
   }
 
   .composer__box {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -669,7 +991,8 @@
       box-shadow 0.2s;
   }
 
-  .composer__box:focus-within {
+  .composer__box:focus-within,
+  .composer__box.is-dragging {
     border-color: color-mix(in srgb, var(--logx-primary) 55%, transparent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--logx-primary) 12%, transparent);
   }
@@ -692,6 +1015,29 @@
 
   .composer__send {
     margin-left: auto;
+  }
+
+  /* 拖入文件时盖住输入框的提示层；不拦截事件，避免 dragleave 来回触发 */
+  .composer__drop {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--logx-primary);
+    pointer-events: none;
+    background: color-mix(in srgb, var(--default-box-color) 88%, var(--logx-primary));
+    border: 1px dashed var(--logx-primary);
+    border-radius: inherit;
+  }
+
+  .composer__hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--logx-gray-500);
+    text-align: center;
   }
 
   .w-store {
